@@ -1,0 +1,207 @@
+name: Unity Package Compile Matrix
+
+"on":
+  workflow_dispatch:
+  push:
+    tags:
+      - '*'
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  editmode:
+    name: Unity ${{ matrix.unityVersion }} EditMode
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - unityVersion: 2022.3.62f1
+            uguiVersion: 1.0.0
+          - unityVersion: 6000.0.76f1
+            uguiVersion: 2.0.0
+          - unityVersion: 6000.2.0f1
+            uguiVersion: 2.0.0
+          - unityVersion: 6000.3.18f1
+            uguiVersion: 2.0.0
+          - unityVersion: 6000.4.12f1
+            uguiVersion: 2.0.0
+          - unityVersion: 6000.5.0f1
+            uguiVersion: 2.5.0
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Create CI test project
+        run: |
+          set -euo pipefail
+          mkdir -p TempUnityProject/Assets TempUnityProject/Packages TempUnityProject/ProjectSettings
+          cat > TempUnityProject/Packages/manifest.json <<EOF
+          {
+            "dependencies": {
+              "com.unity.test-framework": "1.4.5",
+              "com.unity.testtools.codecoverage": "1.3.0",
+              "com.unity.ugui": "${{ matrix.uguiVersion }}",
+              "com.besty.unity-skills": "file:../../SkillsForUnity"
+            },
+            "testables": [
+              "com.besty.unity-skills"
+            ]
+          }
+          EOF
+          cat > TempUnityProject/ProjectSettings/ProjectVersion.txt <<EOF
+          m_EditorVersion: ${{ matrix.unityVersion }}
+          EOF
+          cat TempUnityProject/Packages/manifest.json
+
+      - uses: game-ci/unity-test-runner@v4
+        id: tests
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          packageMode: false
+          projectPath: TempUnityProject
+          unityVersion: ${{ matrix.unityVersion }}
+          testMode: EditMode
+          artifactsPath: artifacts/${{ matrix.unityVersion }}
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unity-test-results-${{ matrix.unityVersion }}
+          path: ${{ steps.tests.outputs.artifactsPath }}
+
+  summary:
+    name: Test Summary & License Check
+    needs: editmode
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: test-results
+
+      - name: Generate Summary Report
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        shell: python
+        run: |
+          import os
+          import glob
+          import xml.etree.ElementTree as ET
+          from datetime import datetime
+          import re
+
+          # 1. 递归查找并解析测试 XML
+          xml_files = glob.glob('test-results/**/*.xml', recursive=True)
+          results = []
+          for xml_path in xml_files:
+              try:
+                  parts = xml_path.split(os.sep)
+                  version = 'Unknown'
+                  for part in parts:
+                      if part.startswith('unity-test-results-'):
+                          version = part.replace('unity-test-results-', '')
+                          break
+                  
+                  tree = ET.parse(xml_path)
+                  root = tree.getroot()
+                  
+                  if root.tag == 'test-run':
+                      total = int(root.attrib.get('total', 0))
+                      passed = int(root.attrib.get('passed', 0))
+                      failed = int(root.attrib.get('failed', 0))
+                      skipped = int(root.attrib.get('skipped', 0))
+                      duration = float(root.attrib.get('duration', 0.0))
+                  elif root.tag == 'test-results':
+                      total = int(root.attrib.get('total', 0))
+                      failures = int(root.attrib.get('failures', 0))
+                      errors = int(root.attrib.get('errors', 0))
+                      failed = failures + errors
+                      skipped = int(root.attrib.get('not-run', 0))
+                      passed = total - failed - skipped
+                      duration = float(root.attrib.get('duration', 0.0) or root.attrib.get('time', 0.0))
+                  else:
+                      continue
+                      
+                  results.append({
+                      'version': version,
+                      'total': total,
+                      'passed': passed,
+                      'failed': failed,
+                      'skipped': skipped,
+                      'duration': f'{duration:.2f}s',
+                      'status': '✅ Pass' if failed == 0 else '❌ Fail'
+                  })
+              except Exception as e:
+                  print(f'Error parsing {xml_path}: {e}')
+
+          # 2. 解析许可证到期时间
+          license_xml = os.environ.get('UNITY_LICENSE', '')
+          license_info = ''
+          if license_xml:
+              stop_date_str = None
+              try:
+                  root = ET.fromstring(license_xml.strip())
+                  license_node = root.find('.//License')
+                  if license_node is not None:
+                      stop_date_str = license_node.attrib.get('StopDate')
+              except Exception:
+                  pass
+              
+              if not stop_date_str:
+                  match = re.search(r'StopDate="([^"]+)"', license_xml)
+                  if match:
+                      stop_date_str = match.group(1)
+
+              if stop_date_str:
+                  try:
+                      stop_date = datetime.strptime(stop_date_str.split('T')[0], '%Y-%m-%d')
+                      days_left = (stop_date - datetime.now()).days
+                      if days_left < 0:
+                          license_info = f'❌ **您的 Unity 许可证已过期** (过期时间: `{stop_date_str.split("T")[0]}`，已过期 `{abs(days_left)}` 天)'
+                      elif days_left < 30:
+                          license_info = f'⚠️ **您的 Unity 许可证即将过期** (剩余 **{days_left}** 天, 过期时间: `{stop_date_str.split("T")[0]}`)'
+                      else:
+                          license_info = f'✅ **您的 Unity 许可证有效** (剩余 **{days_left}** 天, 过期时间: `{stop_date_str.split("T")[0]}`)'
+                  except Exception as ex:
+                      license_info = f'❓ 无法解析许可证的到期时间格式: {ex}'
+              else:
+                  license_info = '❓ 未能在 `UNITY_LICENSE` 中找到 `StopDate` 属性，请确认密文内容是否完整。'
+          else:
+              license_info = '❌ 未配置 `UNITY_LICENSE` 环境变量，无法检测过期时间。'
+
+          # 3. 组装 Markdown 报告
+          md = []
+          md.append('# 🧪 Unity 编译与测试汇总报告\n')
+          
+          if results:
+              md.append('| Unity 版本 | 测试状态 | 总测试数 | 通过 | 失败 | 跳过 | 耗时 |')
+              md.append('| :--- | :---: | :---: | :---: | :---: | :---: | :---: |')
+              for r in sorted(results, key=lambda x: x['version']):
+                  md.append(f"| {r['version']} | {r['status']} | {r['total']} | {r['passed']} | {r['failed']} | {r['skipped']} | {r['duration']} |")
+          else:
+              md.append('⚠️ 未能找到任何测试报告 XML 文件。请检查 `editmode` 任务是否正常运行。')
+
+          md.append('\n## 🔑 许可证状态')
+          md.append(license_info)
+          md.append('\n## 💡 许可证处理建议')
+          md.append('1. **个人版许可证 (Unity Personal)**: 有效期通常为 1 年。如果即将过期或已过期，请使用 Game-CI 的激活流程重新生成激活请求文件 (`.alf`)，在 Unity 官网手动激活后重新获取 `.ulf` 证书，然后将其更新至 GitHub 仓库的 `UNITY_LICENSE` Secret。')
+          md.append('2. **商业版许可证 (Unity Pro/Plus)**: 请确保您的订阅处于激活期。如果使用的是 Serial Number，请确保没有超出同时在线的最大席位限制。')
+
+          # 4. 写入 Step Summary
+          summary_file = os.environ.get('GITHUB_STEP_SUMMARY')
+          if summary_file:
+              with open(summary_file, 'w', encoding='utf-8') as f:
+                  f.write('\n'.join(md))
+          else:
+              print('\n'.join(md))

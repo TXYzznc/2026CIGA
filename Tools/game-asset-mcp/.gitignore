@@ -1,0 +1,12 @@
+node_modules/
+roo_docs/
+tech_docs/
+.env
+assets/
+logs/
+update_api_docs.js
+hunyuan3d_output/
+space_test.js
+coverage/
+--sse/
+test_output/
