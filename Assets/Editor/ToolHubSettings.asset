@@ -1,0 +1,37 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8ec4f2f76dacc504788dab33485efc11, type: 3}
+  m_Name: ToolHubSettings
+  m_EditorClassIdentifier: 
+  locked: 0
+  selectedIndex: 2
+  tools:
+  - typeName: FontReplacerPanel, Assembly-CSharp-Editor, Version=0.0.0.0, Culture=neutral,
+      PublicKeyToken=null
+    displayName: "\u5B57\u4F53\u8D44\u6E90\u66FF\u6362"
+    description: "\u6279\u91CF\u66FF\u6362 Text \u548C TextMeshPro \u7684\u5B57\u4F53\u8D44\u6E90"
+  - typeName: CurvePlacerPanel, Assembly-CSharp-Editor, Version=0.0.0.0, Culture=neutral,
+      PublicKeyToken=null
+    displayName: "\u66F2\u7EBF\u5BF9\u8C61\u653E\u7F6E\u5668"
+    description: "\u6CBF Catmull-Rom \u66F2\u7EBF\u6279\u91CF\u653E\u7F6E\u9884\u5236\u4F53"
+  - typeName: NormalProcessingPanel, Assembly-CSharp-Editor, Version=0.0.0.0, Culture=neutral,
+      PublicKeyToken=null
+    displayName: "\u6CD5\u7EBF\u5904\u7406\u5DE5\u5177"
+    description: "\u5E73\u6ED1\u6CD5\u7EBF\u751F\u6210 + MeshRenderer\u663E\u793A/\u9690\u85CF"
+  - typeName: MaterialConverterPanel, Assembly-CSharp-Editor, Version=0.0.0.0, Culture=neutral,
+      PublicKeyToken=null
+    displayName: "\u6750\u8D28\u6279\u91CF\u8F6C\u6362\u5668"
+    description: "\u6279\u91CF\u5C06\u6750\u8D28\u4ECE\u4E00\u79CD\u6E32\u67D3\u7BA1\u7EBF\u8F6C\u6362\u5230\u53E6\u4E00\u79CD\uFF08Standard/URP/HDRP\uFF09"
+  - typeName: ConsoleLogExporterPanel, Assembly-CSharp-Editor, Version=0.0.0.0, Culture=neutral,
+      PublicKeyToken=null
+    displayName: "Console\u65E5\u5FD7\u5BFC\u51FA"
+    description: "\u5BFC\u51FA Unity Console \u5F53\u524D\u65E5\u5FD7\u5230\u672C\u5730\u6587\u4EF6"

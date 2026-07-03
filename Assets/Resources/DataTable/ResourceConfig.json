@@ -1,0 +1,15 @@
+{
+  "table": "ResourceConfig",
+  "fields": [
+    { "name": "Id", "type": "int", "desc": "资源ID，主键" },
+    { "name": "Name", "type": "string", "desc": "资源标识名，便于阅读" },
+    { "name": "Type", "type": "string", "desc": "资源类型，对应Resources下子文件夹名（Animation/Audio/Effect/Font/Material/Model/Prefab/Sprite/Texture）" },
+    { "name": "LoadPath", "type": "string", "desc": "相对Resources/{Type}/的加载路径，不含扩展名" }
+  ],
+  "rows": [
+    { "Id": 1, "Name": "Bullet", "Type": "Prefab", "LoadPath": "Bullet" },
+    { "Id": 2, "Name": "EnemyScout", "Type": "Sprite", "LoadPath": "Characters/Enemies/scout" },
+    { "Id": 3, "Name": "EnemyTurret", "Type": "Sprite", "LoadPath": "Characters/Enemies/turrot" },
+    { "Id": 4, "Name": "EnemyBoss", "Type": "Sprite", "LoadPath": "Characters/Enemies/boss" }
+  ]
+}
