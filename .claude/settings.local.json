@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__codebase-memory__search_code",
+      "mcp__codebase-memory__query_graph",
+      "mcp__codebase-memory__get_code_snippet",
+      "mcp__codebase-memory__get_architecture",
+      "mcp__codebase-memory__index_repository",
+      "mcp__codebase-memory__detect_changes",
+      "mcp__codebase-memory__list_projects",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "codebase-memory",
+    "codex-art-gen",
+    "playwright"
+  ],
+  "_comment": "Local MCP enable list and permissions allowlist. Keep project-specific absolute paths out of the template.",
+  "_mcp_governance_comment": "skill4agent has been removed. Keep frequent MCPs enabled by default; enable low-frequency MCPs only when needed.",
+  "disabledMcpjsonServers": [
+    "blender",
+    "godot",
+    "frame-ronin",
+    "atlassian"
+  ]
+}
