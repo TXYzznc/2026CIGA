@@ -1,0 +1,41 @@
+# Unity generated
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+.codebase-memory/
+
+# IDE generated
+*.csproj
+*.sln
+*.suo
+*.user
+*.userprefs
+.vs/
+.vscode/.history/
+
+# Python / Node generated
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+node_modules/
+.next/
+dist/
+
+# Local credentials
+.env
+
+# Local logs
+logs/
+输出日志/
+
+# Large local binaries/assets (>10MB)
+Tools/codebase-memory-mcp/codebase-memory-mcp.exe
+Assets/Resources/Font/SIMHEI SDF.asset
+OutPackages/Unity-Skills-main/docs/installation-demo.gif
