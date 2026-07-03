@@ -1,0 +1,7 @@
+interface:
+  display_name: "Unity Shader Graph Artist"
+  short_description: "Visual effects and material specialist - Masters Unity Shader G…"
+  default_prompt: "Use $agency-unity-shader-graph-artist to help with: Visual effects and material specialist - Masters Unity Shader Graph, HLSL, URP/…"
+
+policy:
+  allow_implicit_invocation: true

@@ -1,0 +1,557 @@
+[
+  {
+    "name": "3d-modeling",
+    "desc_len": 224,
+    "has_trigger": true
+  },
+  {
+    "name": "ab-testing",
+    "desc_len": 169,
+    "has_trigger": true
+  },
+  {
+    "name": "achievement-design",
+    "desc_len": 149,
+    "has_trigger": true
+  },
+  {
+    "name": "addressables-hotfix",
+    "desc_len": 177,
+    "has_trigger": true
+  },
+  {
+    "name": "agency-technical-artist",
+    "desc_len": 44,
+    "has_trigger": false
+  },
+  {
+    "name": "agency-unity-shader-graph-artist",
+    "desc_len": 66,
+    "has_trigger": false
+  },
+  {
+    "name": "agent-browser",
+    "desc_len": 170,
+    "has_trigger": true
+  },
+  {
+    "name": "ai-art",
+    "desc_len": 297,
+    "has_trigger": true
+  },
+  {
+    "name": "algo-rank-trueskill",
+    "desc_len": 115,
+    "has_trigger": true
+  },
+  {
+    "name": "animation-systems",
+    "desc_len": 249,
+    "has_trigger": true
+  },
+  {
+    "name": "arch-api",
+    "desc_len": 45,
+    "has_trigger": false
+  },
+  {
+    "name": "art-direction",
+    "desc_len": 231,
+    "has_trigger": true
+  },
+  {
+    "name": "asc-submission-health",
+    "desc_len": 60,
+    "has_trigger": true
+  },
+  {
+    "name": "atomic-matchmaking",
+    "desc_len": 78,
+    "has_trigger": false
+  },
+  {
+    "name": "backend-testing",
+    "desc_len": 106,
+    "has_trigger": true
+  },
+  {
+    "name": "balance-check",
+    "desc_len": 105,
+    "has_trigger": false
+  },
+  {
+    "name": "blender-mcp",
+    "desc_len": 367,
+    "has_trigger": true
+  },
+  {
+    "name": "brainstorm",
+    "desc_len": 59,
+    "has_trigger": false
+  },
+  {
+    "name": "casino-math-balancer",
+    "desc_len": 126,
+    "has_trigger": true
+  },
+  {
+    "name": "cdn-setup",
+    "desc_len": 58,
+    "has_trigger": true
+  },
+  {
+    "name": "codex-image-gen",
+    "desc_len": 298,
+    "has_trigger": true
+  },
+  {
+    "name": "combat-balancer",
+    "desc_len": 132,
+    "has_trigger": true
+  },
+  {
+    "name": "competitive-analysis",
+    "desc_len": 69,
+    "has_trigger": true
+  },
+  {
+    "name": "crash-analytics",
+    "desc_len": 138,
+    "has_trigger": true
+  },
+  {
+    "name": "database-schema-design",
+    "desc_len": 103,
+    "has_trigger": true
+  },
+  {
+    "name": "deep-research",
+    "desc_len": 112,
+    "has_trigger": false
+  },
+  {
+    "name": "deploy-checklist",
+    "desc_len": 64,
+    "has_trigger": true
+  },
+  {
+    "name": "design-system",
+    "desc_len": 59,
+    "has_trigger": false
+  },
+  {
+    "name": "dev-tools",
+    "desc_len": 96,
+    "has_trigger": true
+  },
+  {
+    "name": "devops-deployment",
+    "desc_len": 100,
+    "has_trigger": true
+  },
+  {
+    "name": "difficulty-curve",
+    "desc_len": 157,
+    "has_trigger": true
+  },
+  {
+    "name": "document-tools",
+    "desc_len": 227,
+    "has_trigger": true
+  },
+  {
+    "name": "feature-flags",
+    "desc_len": 131,
+    "has_trigger": true
+  },
+  {
+    "name": "find-skills",
+    "desc_len": 101,
+    "has_trigger": true
+  },
+  {
+    "name": "font-pairing-suggester",
+    "desc_len": 46,
+    "has_trigger": false
+  },
+  {
+    "name": "font-selection-cjk",
+    "desc_len": 71,
+    "has_trigger": true
+  },
+  {
+    "name": "font-subsetting",
+    "desc_len": 84,
+    "has_trigger": true
+  },
+  {
+    "name": "game-art",
+    "desc_len": 149,
+    "has_trigger": true
+  },
+  {
+    "name": "game-design-core",
+    "desc_len": 183,
+    "has_trigger": true
+  },
+  {
+    "name": "game-design-theory",
+    "desc_len": 168,
+    "has_trigger": true
+  },
+  {
+    "name": "game-monetization",
+    "desc_len": 239,
+    "has_trigger": false
+  },
+  {
+    "name": "game-networking",
+    "desc_len": 222,
+    "has_trigger": true
+  },
+  {
+    "name": "game-ui-design",
+    "desc_len": 178,
+    "has_trigger": true
+  },
+  {
+    "name": "github-actions-docs",
+    "desc_len": 160,
+    "has_trigger": true
+  },
+  {
+    "name": "gpt-image-2-style-library",
+    "desc_len": 129,
+    "has_trigger": false
+  },
+  {
+    "name": "grill-me",
+    "desc_len": 137,
+    "has_trigger": false
+  },
+  {
+    "name": "grill-with-docs",
+    "desc_len": 138,
+    "has_trigger": false
+  },
+  {
+    "name": "image-compression",
+    "desc_len": 184,
+    "has_trigger": true
+  },
+  {
+    "name": "jwt-auth",
+    "desc_len": 70,
+    "has_trigger": true
+  },
+  {
+    "name": "k6",
+    "desc_len": 159,
+    "has_trigger": true
+  },
+  {
+    "name": "kafka-development",
+    "desc_len": 205,
+    "has_trigger": true
+  },
+  {
+    "name": "level-design",
+    "desc_len": 175,
+    "has_trigger": true
+  },
+  {
+    "name": "localization-i18n",
+    "desc_len": 253,
+    "has_trigger": true
+  },
+  {
+    "name": "milestone-tracker",
+    "desc_len": 117,
+    "has_trigger": true
+  },
+  {
+    "name": "moai-docs-generation",
+    "desc_len": 95,
+    "has_trigger": true
+  },
+  {
+    "name": "mobile-cicd",
+    "desc_len": 147,
+    "has_trigger": true
+  },
+  {
+    "name": "mobile-device-testing",
+    "desc_len": 160,
+    "has_trigger": true
+  },
+  {
+    "name": "multiplayer-game",
+    "desc_len": 177,
+    "has_trigger": true
+  },
+  {
+    "name": "oauth-implementation",
+    "desc_len": 45,
+    "has_trigger": false
+  },
+  {
+    "name": "openspec",
+    "desc_len": 198,
+    "has_trigger": true
+  },
+  {
+    "name": "opentelemetry",
+    "desc_len": 232,
+    "has_trigger": true
+  },
+  {
+    "name": "physics-collision",
+    "desc_len": 285,
+    "has_trigger": true
+  },
+  {
+    "name": "pixel-font-rendering",
+    "desc_len": 82,
+    "has_trigger": true
+  },
+  {
+    "name": "player-guidance",
+    "desc_len": 223,
+    "has_trigger": true
+  },
+  {
+    "name": "player-onboarding",
+    "desc_len": 150,
+    "has_trigger": true
+  },
+  {
+    "name": "playtest-digital",
+    "desc_len": 103,
+    "has_trigger": true
+  },
+  {
+    "name": "playtest-driver",
+    "desc_len": 149,
+    "has_trigger": true
+  },
+  {
+    "name": "progression-systems",
+    "desc_len": 214,
+    "has_trigger": false
+  },
+  {
+    "name": "project-management",
+    "desc_len": 52,
+    "has_trigger": false
+  },
+  {
+    "name": "prometheus",
+    "desc_len": 74,
+    "has_trigger": true
+  },
+  {
+    "name": "propagate-design-change",
+    "desc_len": 58,
+    "has_trigger": false
+  },
+  {
+    "name": "puzzle-design",
+    "desc_len": 258,
+    "has_trigger": false
+  },
+  {
+    "name": "quest-mission-design",
+    "desc_len": 130,
+    "has_trigger": true
+  },
+  {
+    "name": "redis-best-practices",
+    "desc_len": 176,
+    "has_trigger": true
+  },
+  {
+    "name": "redis-specialist",
+    "desc_len": 208,
+    "has_trigger": true
+  },
+  {
+    "name": "review-all-gdds",
+    "desc_len": 116,
+    "has_trigger": false
+  },
+  {
+    "name": "rigging",
+    "desc_len": 135,
+    "has_trigger": true
+  },
+  {
+    "name": "risk-assessment",
+    "desc_len": 45,
+    "has_trigger": false
+  },
+  {
+    "name": "save-serialization",
+    "desc_len": 222,
+    "has_trigger": true
+  },
+  {
+    "name": "secrets-management",
+    "desc_len": 83,
+    "has_trigger": true
+  },
+  {
+    "name": "semver",
+    "desc_len": 96,
+    "has_trigger": true
+  },
+  {
+    "name": "setup-fastlane",
+    "desc_len": 189,
+    "has_trigger": true
+  },
+  {
+    "name": "shader-effects",
+    "desc_len": 80,
+    "has_trigger": true
+  },
+  {
+    "name": "skill-creator",
+    "desc_len": 77,
+    "has_trigger": false
+  },
+  {
+    "name": "sprint-retrospective",
+    "desc_len": 74,
+    "has_trigger": true
+  },
+  {
+    "name": "state-machine",
+    "desc_len": 238,
+    "has_trigger": true
+  },
+  {
+    "name": "steam-deploy",
+    "desc_len": 148,
+    "has_trigger": true
+  },
+  {
+    "name": "task-estimation",
+    "desc_len": 76,
+    "has_trigger": true
+  },
+  {
+    "name": "testing-strategies",
+    "desc_len": 92,
+    "has_trigger": true
+  },
+  {
+    "name": "texture-art",
+    "desc_len": 231,
+    "has_trigger": true
+  },
+  {
+    "name": "typeset",
+    "desc_len": 50,
+    "has_trigger": false
+  },
+  {
+    "name": "ui-asset-splitting",
+    "desc_len": 115,
+    "has_trigger": true
+  },
+  {
+    "name": "uloop-execute-dynamic-code",
+    "desc_len": 135,
+    "has_trigger": false
+  },
+  {
+    "name": "uloop-run-tests",
+    "desc_len": 123,
+    "has_trigger": true
+  },
+  {
+    "name": "unity-animation",
+    "desc_len": 121,
+    "has_trigger": true
+  },
+  {
+    "name": "unity-architecture-di",
+    "desc_len": 222,
+    "has_trigger": true
+  },
+  {
+    "name": "unity-async-patterns",
+    "desc_len": 169,
+    "has_trigger": false
+  },
+  {
+    "name": "unity-build-pipeline",
+    "desc_len": 189,
+    "has_trigger": true
+  },
+  {
+    "name": "unity-dev",
+    "desc_len": 196,
+    "has_trigger": true
+  },
+  {
+    "name": "unity-ecs-patterns",
+    "desc_len": 75,
+    "has_trigger": true
+  },
+  {
+    "name": "unity-editor-scripting",
+    "desc_len": 161,
+    "has_trigger": true
+  },
+  {
+    "name": "unity-foundations",
+    "desc_len": 237,
+    "has_trigger": true
+  },
+  {
+    "name": "unity-input-correctness",
+    "desc_len": 192,
+    "has_trigger": true
+  },
+  {
+    "name": "unity-lighting-vfx",
+    "desc_len": 121,
+    "has_trigger": true
+  },
+  {
+    "name": "unity-networking",
+    "desc_len": 82,
+    "has_trigger": true
+  },
+  {
+    "name": "unity-rect-transform",
+    "desc_len": 379,
+    "has_trigger": true
+  },
+  {
+    "name": "unity-shaders-rendering",
+    "desc_len": 308,
+    "has_trigger": true
+  },
+  {
+    "name": "unity-skills",
+    "desc_len": 55,
+    "has_trigger": false
+  },
+  {
+    "name": "unity-ui",
+    "desc_len": 142,
+    "has_trigger": true
+  },
+  {
+    "name": "vfx-realtime",
+    "desc_len": 187,
+    "has_trigger": true
+  },
+  {
+    "name": "xlsx",
+    "desc_len": 161,
+    "has_trigger": false
+  }
+]

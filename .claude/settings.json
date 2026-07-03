@@ -1,0 +1,41 @@
+{
+  "_comment": "轻量模板 hooks：注入中文协作习惯与大型决策门槛，不注入具体程序框架约束。",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "_comment": "记录 Skill/Agent/MCP 调用频次；脚本缺失时不应阻塞工具。",
+        "matcher": "Skill|Agent|mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python Tools/log_tool_usage.py"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const fs=require('fs');try{const c=fs.readFileSync('.claude/AGENTS.md','utf8');console.log(JSON.stringify({hookSpecificOutput:{hookEventName:'SessionStart',additionalContext:'【自动注入 .claude/AGENTS.md】\\n'+c}}))}catch(e){}\""
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"console.log(JSON.stringify({hookSpecificOutput:{hookEventName:'UserPromptSubmit',additionalContext:'始终使用中文回答。优先简单方案。实现 Unity 代码前先查询当前项目真实结构；本模板不预设 InputModule、EventBus、DataTableGenerator 或任何运行时框架。'}}))\""
+          },
+          {
+            "type": "command",
+            "command": "node -e \"let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{let p='';try{p=JSON.parse(d).prompt||''}catch(e){return}const re=/设计|架构|重构|大改|重写|GDD|PRD|系统|范式|方案|思路/;if(re.test(p)){const ctx='检测到大型决策关键词。先用 grill-me / grill-with-docs 的问题框架澄清：1)目标 2)关键决策 3)边界 4)验收标准 5)约束；再评估是否需要 OpenSpec。';console.log(JSON.stringify({hookSpecificOutput:{hookEventName:'UserPromptSubmit',additionalContext:ctx}}))}})\""
+          }
+        ]
+      }
+    ]
+  }
+}

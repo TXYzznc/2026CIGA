@@ -1,0 +1,7 @@
+interface:
+  display_name: "Technical Artist"
+  short_description: "Art-to-engine pipeline specialist - Masters shaders, VFX system…"
+  default_prompt: "Use $agency-technical-artist to help with: Art-to-engine pipeline specialist - Masters shaders, VFX systems, LOD pipelines…"
+
+policy:
+  allow_implicit_invocation: true

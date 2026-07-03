@@ -1,0 +1,20 @@
+{
+  "_comment": "轻量模板默认只保留常用 MCP 入口；大型或项目专用工具按需启用。",
+  "mcpServers": {
+    "codebase-memory": {
+      "command": "Tools/codebase-memory-mcp/codebase-memory-mcp.exe",
+      "args": []
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["@playwright/mcp@latest"]
+    },
+    "blender": {
+      "command": "cmd",
+      "args": ["/c", "uvx", "--python", "3.11", "blender-mcp"],
+      "env": {
+        "UV_PYTHON_PREFERENCE": "only-managed"
+      }
+    }
+  }
+}

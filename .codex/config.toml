@@ -1,0 +1,13 @@
+[mcp_servers.codebase-memory]
+command = "Tools/codebase-memory-mcp/codebase-memory-mcp.exe"
+
+[mcp_servers.playwright]
+command = "npx"
+args = ["@playwright/mcp@latest"]
+
+[mcp_servers.blender]
+command = "cmd"
+args = ["/c", "uvx", "--python", "3.11", "blender-mcp"]
+
+[mcp_servers.blender.env]
+UV_PYTHON_PREFERENCE = "only-managed"
