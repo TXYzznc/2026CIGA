@@ -85,25 +85,33 @@ public static class ZZNCPrototypeArtGenerator
             fill: new Color32(232, 244, 255, 255),
             rim: new Color32(57, 113, 168, 255),
             glow: new Color32(92, 182, 255, 135),
-            icon: PieceIcon.None));
+            icon: PieceIcon.Normal,
+            label: "NORMAL",
+            labelColor: new Color32(24, 77, 126, 255)));
 
         WritePng("Piece_Score", DrawCircle(
             fill: new Color32(255, 214, 88, 255),
             rim: new Color32(162, 102, 18, 255),
             glow: new Color32(255, 238, 138, 145),
-            icon: PieceIcon.Score));
+            icon: PieceIcon.Score,
+            label: "SCORE",
+            labelColor: new Color32(112, 66, 9, 255)));
 
         WritePng("Piece_Explosion", DrawCircle(
             fill: new Color32(244, 83, 44, 255),
             rim: new Color32(114, 32, 27, 255),
             glow: new Color32(255, 164, 57, 150),
-            icon: PieceIcon.Explosion));
+            icon: PieceIcon.Explosion,
+            label: "BOOM",
+            labelColor: new Color32(255, 246, 176, 255)));
 
         WritePng("Piece_Split", DrawCircle(
             fill: new Color32(106, 218, 212, 255),
             rim: new Color32(78, 48, 150, 255),
             glow: new Color32(178, 117, 255, 145),
-            icon: PieceIcon.Split));
+            icon: PieceIcon.Split,
+            label: "SPLIT",
+            labelColor: new Color32(39, 28, 91, 255)));
 
         WritePng("Highlight_Ring", DrawRing(
             rim: new Color32(255, 236, 86, 230),
@@ -168,7 +176,7 @@ public static class ZZNCPrototypeArtGenerator
         return texture;
     }
 
-    private static Texture2D DrawCircle(Color32 fill, Color32 rim, Color32 glow, PieceIcon icon, float radiusScale = 0.68f)
+    private static Texture2D DrawCircle(Color32 fill, Color32 rim, Color32 glow, PieceIcon icon, float radiusScale = 0.68f, string label = null, Color32? labelColor = null)
     {
         var texture = NewTexture();
         var center = new Vector2((TextureSize - 1) * 0.5f, (TextureSize - 1) * 0.5f);
@@ -206,6 +214,11 @@ public static class ZZNCPrototypeArtGenerator
         }
 
         DrawPieceIcon(texture, icon);
+        if (!string.IsNullOrEmpty(label))
+        {
+            DrawPixelTextCentered(texture, label, TextureSize * 0.5f, TextureSize * 0.28f, 3, labelColor ?? new Color32(28, 34, 46, 255));
+        }
+
         texture.Apply();
         return texture;
     }
@@ -227,7 +240,7 @@ public static class ZZNCPrototypeArtGenerator
                     continue;
                 }
 
-                var color = ring < 5f ? (Color)rim : glow;
+                var color = ring < 5f ? (Color)rim : (Color)glow;
                 color.a *= Mathf.Clamp01((12f - ring) / 7f);
                 texture.SetPixel(x, y, color);
             }
@@ -241,6 +254,9 @@ public static class ZZNCPrototypeArtGenerator
     {
         switch (icon)
         {
+            case PieceIcon.Normal:
+                DrawFilledCircle(texture, new Vector2(TextureSize * 0.5f, TextureSize * 0.55f), TextureSize * 0.055f, new Color32(57, 113, 168, 210));
+                break;
             case PieceIcon.Score:
                 DrawStar(texture, new Color32(130, 78, 12, 225));
                 break;
@@ -287,6 +303,107 @@ public static class ZZNCPrototypeArtGenerator
         DrawThickLine(texture, center + new Vector2(0f, TextureSize * 0.17f), center - new Vector2(0f, TextureSize * 0.16f), 8f, color);
         DrawThickLine(texture, center, center + new Vector2(TextureSize * 0.15f, TextureSize * 0.12f), 8f, color);
         DrawThickLine(texture, center, center + new Vector2(-TextureSize * 0.15f, TextureSize * 0.12f), 8f, color);
+    }
+
+    private static void DrawPixelTextCentered(Texture2D texture, string text, float centerX, float baselineY, int scale, Color32 color)
+    {
+        text = text.ToUpperInvariant();
+        var width = MeasurePixelText(text, scale);
+        var x = Mathf.RoundToInt(centerX - width * 0.5f);
+        var y = Mathf.RoundToInt(baselineY);
+
+        DrawPixelText(texture, text, x + scale, y - scale, scale, new Color32(0, 0, 0, 110));
+        DrawPixelText(texture, text, x, y, scale, color);
+    }
+
+    private static int MeasurePixelText(string text, int scale)
+    {
+        var width = 0;
+        for (var i = 0; i < text.Length; i++)
+        {
+            width += (text[i] == ' ' ? 3 : 5) * scale;
+            if (i < text.Length - 1)
+            {
+                width += scale;
+            }
+        }
+
+        return width;
+    }
+
+    private static void DrawPixelText(Texture2D texture, string text, int startX, int startY, int scale, Color32 color)
+    {
+        var cursor = startX;
+        foreach (var ch in text)
+        {
+            if (ch == ' ')
+            {
+                cursor += 4 * scale;
+                continue;
+            }
+
+            var glyph = GetGlyph(ch);
+            if (glyph == null)
+            {
+                cursor += 6 * scale;
+                continue;
+            }
+
+            for (var row = 0; row < glyph.Length; row++)
+            {
+                var line = glyph[row];
+                for (var col = 0; col < line.Length; col++)
+                {
+                    if (line[col] != '1')
+                    {
+                        continue;
+                    }
+
+                    DrawPixelBlock(texture, cursor + col * scale, startY + (glyph.Length - 1 - row) * scale, scale, color);
+                }
+            }
+
+            cursor += 6 * scale;
+        }
+    }
+
+    private static void DrawPixelBlock(Texture2D texture, int x, int y, int scale, Color32 color)
+    {
+        for (var py = 0; py < scale; py++)
+        {
+            for (var px = 0; px < scale; px++)
+            {
+                var tx = x + px;
+                var ty = y + py;
+                if (tx < 0 || tx >= TextureSize || ty < 0 || ty >= TextureSize)
+                {
+                    continue;
+                }
+
+                BlendPixel(texture, tx, ty, color);
+            }
+        }
+    }
+
+    private static string[] GetGlyph(char ch)
+    {
+        switch (ch)
+        {
+            case 'A': return new[] { "01110", "10001", "10001", "11111", "10001", "10001", "10001" };
+            case 'B': return new[] { "11110", "10001", "10001", "11110", "10001", "10001", "11110" };
+            case 'C': return new[] { "01111", "10000", "10000", "10000", "10000", "10000", "01111" };
+            case 'E': return new[] { "11111", "10000", "10000", "11110", "10000", "10000", "11111" };
+            case 'I': return new[] { "11111", "00100", "00100", "00100", "00100", "00100", "11111" };
+            case 'L': return new[] { "10000", "10000", "10000", "10000", "10000", "10000", "11111" };
+            case 'M': return new[] { "10001", "11011", "10101", "10101", "10001", "10001", "10001" };
+            case 'N': return new[] { "10001", "11001", "10101", "10011", "10001", "10001", "10001" };
+            case 'O': return new[] { "01110", "10001", "10001", "10001", "10001", "10001", "01110" };
+            case 'P': return new[] { "11110", "10001", "10001", "11110", "10000", "10000", "10000" };
+            case 'R': return new[] { "11110", "10001", "10001", "11110", "10100", "10010", "10001" };
+            case 'S': return new[] { "01111", "10000", "10000", "01110", "00001", "00001", "11110" };
+            case 'T': return new[] { "11111", "00100", "00100", "00100", "00100", "00100", "00100" };
+            default: return null;
+        }
     }
 
     private static void GenerateMaterials()
@@ -601,6 +718,7 @@ public static class ZZNCPrototypeArtGenerator
     private enum PieceIcon
     {
         None,
+        Normal,
         Score,
         Explosion,
         Split

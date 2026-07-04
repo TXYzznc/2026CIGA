@@ -6,12 +6,12 @@ namespace TotemWarrior.EditorTools
     /// <summary>
     /// UI 美术素材自动导入设置。
     ///
-    /// 范围：仅 Assets/Resources/Sprite/UI/ 下的贴图（含子目录），不影响角色/场景/特效等其他贴图类别的导入设置。
+    /// 范围：Assets下的贴图（含子目录）
     /// 触发：首次导入或贴图变更时自动重跑（Unity AssetPostprocessor 标准生命周期）。
     /// </summary>
     public sealed class UISpriteImportProcessor : AssetPostprocessor
     {
-        const string UISpriteRoot = "Assets/Resources/Sprite/UI/";
+        const string UISpriteRoot = "Assets";
 
         void OnPreprocessTexture()
         {
