@@ -2,9 +2,23 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
+[System.Serializable]
+public struct PieceEntry
+{
+    public PieceType type;
+    public int q;
+    public int r;
+}
+
+[System.Serializable]
+public struct WallEntry
+{
+    public int q;
+    public int r;
+}
+
 /// <summary>
-/// Temporary Program-B replacement for validating Program-A round rules in an actual scene.
-/// Delete the whole TempProgramBPlaytest folder after the real Program-B implementation is ready.
+/// 在 Inspector 里拖 Sprite + 配棋子列表，运行时按 Tab 键热重载布局。
 /// </summary>
 public class ZZNCTempProgramBPlaytestController : MonoBehaviour, IBoardView, IPieceViewFactory, IHUDView
 {
@@ -12,20 +26,29 @@ public class ZZNCTempProgramBPlaytestController : MonoBehaviour, IBoardView, IPi
     private const float PieceZ = -0.05f;
     private const int BoardRadius = 3;
 
-    [Header("Generated Prototype Prefabs")]
+    [Header("=== 棋盘 Prefab（拖一次）===")]
     [SerializeField] private GameObject hexCellPrefab;
     [SerializeField] private GameObject hexWallPrefab;
     [SerializeField] private GameObject previewDotPrefab;
-
-    [Header("Generated Prototype Sprites")]
-    [SerializeField] private Sprite normalPieceSprite;
-    [SerializeField] private Sprite scorePieceSprite;
-    [SerializeField] private Sprite explosionPieceSprite;
-    [SerializeField] private Sprite splitPieceSprite;
     [SerializeField] private Material pieceMaterial;
 
-    [Header("Runtime")]
-    [SerializeField] private int layoutIndex;
+    [Header("=== 棋子精灵（10种，拖上去）===")]
+    [SerializeField] private Sprite spriteNormal;
+    [SerializeField] private Sprite spriteScore;
+    [SerializeField] private Sprite spriteExplosion;
+    [SerializeField] private Sprite spriteSplit;
+    [SerializeField] private Sprite spriteBounce;
+    [SerializeField] private Sprite spriteStomach;
+    [SerializeField] private Sprite spriteDevour;
+    [SerializeField] private Sprite spriteTurn;
+    [SerializeField] private Sprite spriteSwap;
+    [SerializeField] private Sprite spriteWhirlwind;
+
+    [Header("=== 当前布局（在下面列表加点）===")]
+    [SerializeField] private List<PieceEntry> pieces = new List<PieceEntry>();
+    [SerializeField] private List<WallEntry> walls = new List<WallEntry>();
+
+    [Header("Runtime Info（只读）")]
     [SerializeField] private int boardOrientation;
 
     private readonly Board _board = new Board();
@@ -37,26 +60,22 @@ public class ZZNCTempProgramBPlaytestController : MonoBehaviour, IBoardView, IPi
     private Transform _effectsRoot;
     private SmackResolver _resolver;
     private bool _isResolving;
+    private Board.Snapshot _snapshot;
 
     private void Awake()
     {
         EnsureRoots();
         _resolver = gameObject.GetComponent<SmackResolver>();
         if (_resolver == null)
-        {
             _resolver = gameObject.AddComponent<SmackResolver>();
-        }
 
         _resolver.Init(_board, this, this, this);
-        BuildLayout(layoutIndex);
+        BuildLayout();
     }
 
     private void Update()
     {
-        if (_isResolving)
-        {
-            return;
-        }
+        if (_isResolving) return;
 
         if (Input.GetKeyDown(KeyCode.A))
         {
@@ -73,6 +92,16 @@ public class ZZNCTempProgramBPlaytestController : MonoBehaviour, IBoardView, IPi
         if (Input.GetKeyDown(KeyCode.Space))
         {
             ExecuteCurrentSmack();
+        }
+
+        if (Input.GetKeyDown(KeyCode.Q))
+        {
+            UndoLastSmack();
+        }
+
+        if (Input.GetKeyDown(KeyCode.Tab))
+        {
+            BuildLayout();
         }
     }
 
@@ -125,90 +154,53 @@ public class ZZNCTempProgramBPlaytestController : MonoBehaviour, IBoardView, IPi
         return go.transform;
     }
 
-    private void BuildLayout(int index)
+    private void BuildLayout()
     {
-        layoutIndex = Mathf.Clamp(index, 0, 3);
         _isResolving = false;
+        ClearPreview();
         ClearChildren(_cellsRoot);
         ClearChildren(_piecesRoot);
         ClearChildren(_effectsRoot);
         _cellObjects.Clear();
         _pieceViews.Clear();
-        _previewObjects.Clear();
         _board.Clear();
         _board.SetShape(MakeHexagonShape(BoardRadius));
 
-        var walls = GetWalls(layoutIndex);
-        foreach (var wall in walls)
+        var wallSet = new HashSet<Hex>();
+        foreach (var w in walls)
         {
-            _board.PlaceWall(wall);
+            var hex = new Hex(w.q, w.r);
+            wallSet.Add(hex);
+            _board.PlaceWall(hex);
         }
 
         foreach (var cell in _board.AllInsideCells())
         {
-            var prefab = walls.Contains(cell) ? hexWallPrefab : hexCellPrefab;
-            var cellObject = Instantiate(prefab, HexToWorld(cell), Quaternion.identity, _cellsRoot);
-            cellObject.name = walls.Contains(cell) ? $"Wall_{cell.q}_{cell.r}" : $"Cell_{cell.q}_{cell.r}";
-            _cellObjects[cell] = cellObject;
+            var isWall = wallSet.Contains(cell);
+            var prefab = isWall ? hexWallPrefab : hexCellPrefab;
+            var obj = Instantiate(prefab, HexToWorld(cell), Quaternion.identity, _cellsRoot);
+            obj.name = isWall ? $"Wall_{cell.q}_{cell.r}" : $"Cell_{cell.q}_{cell.r}";
+            _cellObjects[cell] = obj;
         }
 
-        BuildPieces(layoutIndex);
+        foreach (var pe in pieces)
+        {
+            var pos = new Hex(pe.q, pe.r);
+            if (_board.GetContent(pos) != CellContent.Empty)
+            {
+                Debug.LogWarning($"[Layout] {pe.type} @ ({pe.q},{pe.r}) 被占用，跳过");
+                continue;
+            }
+            var piece = new Piece { Type = pe.type };
+            var view = CreatePieceView(pe.type, pos);
+            piece.View = view;
+            _board.PlacePiece(piece, pos);
+            _pieceViews[piece] = view;
+        }
+
         ApplyBoardRotation();
         RefreshPreview();
-        Debug.Log($"[ZZNC.TempProgramB] Layout {layoutIndex + 1} ready. A/D rotates the board visually, Space resolves one smack.");
-    }
-
-    private void BuildPieces(int index)
-    {
-        switch (index)
-        {
-            case 0:
-                PlacePiece(PieceType.Normal, new Hex(0, -3));
-                PlacePiece(PieceType.Score, new Hex(0, 2));
-                PlacePiece(PieceType.Explosion, new Hex(1, 1));
-                PlacePiece(PieceType.Split, new Hex(-1, 2));
-                PlacePiece(PieceType.Normal, new Hex(1, 2));
-                PlacePiece(PieceType.Normal, new Hex(-2, 2));
-                break;
-            case 1:
-                PlacePiece(PieceType.Normal, new Hex(0, -3));
-                PlacePiece(PieceType.Explosion, new Hex(0, 1));
-                PlacePiece(PieceType.Normal, new Hex(1, 1));
-                PlacePiece(PieceType.Score, new Hex(-1, 2));
-                PlacePiece(PieceType.Split, new Hex(2, -1));
-                break;
-            case 2:
-                PlacePiece(PieceType.Normal, new Hex(0, -3));
-                PlacePiece(PieceType.Split, new Hex(0, 1));
-                PlacePiece(PieceType.Normal, new Hex(1, 1));
-                PlacePiece(PieceType.Normal, new Hex(2, 1));
-                PlacePiece(PieceType.Score, new Hex(-1, 2));
-                break;
-            case 3:
-                PlacePiece(PieceType.Normal, new Hex(-2, -1));
-                PlacePiece(PieceType.Score, new Hex(-1, 0));
-                PlacePiece(PieceType.Explosion, new Hex(0, 1));
-                PlacePiece(PieceType.Split, new Hex(1, 1));
-                PlacePiece(PieceType.Normal, new Hex(2, -2));
-                PlacePiece(PieceType.Normal, new Hex(-3, 3));
-                PlacePiece(PieceType.Score, new Hex(3, -1));
-                break;
-        }
-    }
-
-    private void PlacePiece(PieceType type, Hex pos)
-    {
-        if (_board.GetContent(pos) != CellContent.Empty)
-        {
-            Debug.LogWarning($"[ZZNC.TempProgramB] Cannot place {type} at {pos}; cell content is {_board.GetContent(pos)}.");
-            return;
-        }
-
-        var piece = new Piece { Type = type };
-        var view = CreatePieceView(type, pos);
-        piece.View = view;
-        _board.PlacePiece(piece, pos);
-        _pieceViews[piece] = view;
+        Debug.Log($"[Layout] 已加载 {pieces.Count} 枚棋子, {walls.Count} 面墙. 空格=拍击, Q=撤销, Tab=重载布局");
     }
 
     private ZZNCTempProgramBPieceView CreatePieceView(PieceType type, Hex pos)
@@ -223,23 +215,26 @@ public class ZZNCTempProgramBPlaytestController : MonoBehaviour, IBoardView, IPi
         return view;
     }
 
-    private Sprite GetPieceSprite(PieceType type)
+    private Sprite GetPieceSprite(PieceType type) => type switch
     {
-        switch (type)
-        {
-            case PieceType.Score:
-                return scorePieceSprite;
-            case PieceType.Explosion:
-                return explosionPieceSprite;
-            case PieceType.Split:
-                return splitPieceSprite;
-            default:
-                return normalPieceSprite;
-        }
-    }
+        PieceType.Normal     => spriteNormal,
+        PieceType.Score      => spriteScore,
+        PieceType.Explosion  => spriteExplosion,
+        PieceType.Split      => spriteSplit,
+        PieceType.Bounce     => spriteBounce,
+        PieceType.Stomach    => spriteStomach,
+        PieceType.Devour     => spriteDevour,
+        PieceType.Turn       => spriteTurn,
+        PieceType.Swap       => spriteSwap,
+        PieceType.Whirlwind  => spriteWhirlwind,
+        _                    => spriteNormal,
+    };
 
     private void ExecuteCurrentSmack()
     {
+        // 保存快照（可在拍击过程中按 Q 回到此状态）
+        _snapshot = _board.Capture();
+
         _isResolving = true;
         ClearPreview();
         var gravityDir = Hex.OrientationToGravityDir(boardOrientation);
@@ -250,8 +245,40 @@ public class ZZNCTempProgramBPlaytestController : MonoBehaviour, IBoardView, IPi
             _isResolving = false;
             RemoveDeadViewEntries();
             RefreshPreview();
-            Debug.Log($"[ZZNC.TempProgramB] Smack stable. Score={result.ScoreGained}, MaxCombo={result.MaxCombo}, Overflow={result.EventOverflow}");
+            Debug.Log($"[ZZNC.TempProgramB] Smack stable. Score={result.ScoreGained}, Overflow={result.EventOverflow}");
         });
+    }
+
+    private void UndoLastSmack()
+    {
+        if (_snapshot == null) return;
+
+        // 停止正在播放的动画协程
+        _resolver.StopAllCoroutines();
+
+        _isResolving = false;
+        ClearPreview();
+
+        // 销毁当前所有棋子视图
+        ClearChildren(_piecesRoot);
+        _pieceViews.Clear();
+
+        // 恢复棋盘数据（保留墙体/形状）
+        _board.Restore(_snapshot);
+
+        // 为恢复后的棋子重建视图
+        foreach (var p in _board.AllPieces())
+        {
+            var view = CreatePieceView(p.Type, p.Position);
+            p.View = view;
+            _pieceViews[p] = view;
+        }
+
+        // 把布局快照设为 null，避免连续 Undo
+        _snapshot = null;
+
+        RefreshPreview();
+        Debug.Log($"[ZZNC.TempProgramB] Undo restored {_board.AllPieces().Count} pieces.");
     }
 
     private void ApplyBoardRotation()
@@ -316,37 +343,6 @@ public class ZZNCTempProgramBPlaytestController : MonoBehaviour, IBoardView, IPi
         {
             _pieceViews.Remove(piece);
         }
-    }
-
-    private static HashSet<Hex> GetWalls(int index)
-    {
-        var walls = new HashSet<Hex>();
-        switch (index)
-        {
-            case 0:
-                walls.Add(new Hex(-1, 1));
-                walls.Add(new Hex(1, -1));
-                walls.Add(new Hex(2, -2));
-                break;
-            case 1:
-                walls.Add(new Hex(-1, 1));
-                walls.Add(new Hex(1, -2));
-                walls.Add(new Hex(2, -2));
-                break;
-            case 2:
-                walls.Add(new Hex(3, -1));
-                walls.Add(new Hex(-1, 1));
-                walls.Add(new Hex(-2, 2));
-                break;
-            case 3:
-                walls.Add(new Hex(0, 0));
-                walls.Add(new Hex(1, -1));
-                walls.Add(new Hex(-1, 1));
-                walls.Add(new Hex(2, -1));
-                break;
-        }
-
-        return walls;
     }
 
     private static IEnumerable<Hex> MakeHexagonShape(int radius)

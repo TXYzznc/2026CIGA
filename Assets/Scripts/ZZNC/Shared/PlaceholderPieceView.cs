@@ -2,6 +2,7 @@ using UnityEngine;
 
 public class PlaceholderPieceView : MonoBehaviour, IPieceView
 {
+    public void SnapTo(Vector3 worldPos)                { transform.position = worldPos; }
     public float MoveTo(Vector3 worldPos)   { transform.position = worldPos; return 0.1f; }
     public float PlayHitShake()             { return 0.1f; }
     public float PlayAbilityFX()            { return 0.1f; }

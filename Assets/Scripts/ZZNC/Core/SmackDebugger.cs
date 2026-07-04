@@ -65,8 +65,8 @@ public class SmackDebugger : MonoBehaviour
         bool done = false;
         _resolver.ExecuteSmack(0, SmackRules.Default, result =>
         {
-            Log(result.ScoreGained == 100, $"得分应为 100，实际 {result.ScoreGained}");
-            Log(result.MaxCombo == 1,      $"连击应为 1，实际 {result.MaxCombo}");
+            // 普通棋撞击者+2，得分棋 ScoreHitCount=1 → 2^1=2，合计 = 4
+            Log(result.ScoreGained == 4, $"得分应为 4（普通棋+2，得分棋+2），实际 {result.ScoreGained}");
             done = true;
         });
         yield return new WaitUntil(() => done);
@@ -86,7 +86,8 @@ public class SmackDebugger : MonoBehaviour
         _resolver.ExecuteSmack(0, SmackRules.Default, result =>
         {
             Log(pSide.Position != initPos, $"旁边棋子被推走，初始={initPos} 推后={pSide.Position}");
-            Log(result.MaxCombo == 1,      $"连击应为 1，实际 {result.MaxCombo}");
+            // 普通棋撞击+2，爆炸推成功+2，被推的普通棋+2，合计 = 6
+            Log(result.ScoreGained == 6, $"得分应为 6（撞击+2，爆炸推+2，被推+2），实际 {result.ScoreGained}");
             done = true;
         });
         yield return new WaitUntil(() => done);
@@ -111,7 +112,7 @@ public class SmackDebugger : MonoBehaviour
 
             Log(originGone,      "原分裂棋已移除");
             Log(splitCount == 2, $"场上分裂棋应为 2，实际 {splitCount}");
-            Log(result.MaxCombo == 1, $"连击应为 1，实际 {result.MaxCombo}");
+            Log(result.ScoreGained == 2, $"得分应为 2（普通棋撞击+2），实际 {result.ScoreGained}");
             done = true;
         });
         yield return new WaitUntil(() => done);
@@ -154,6 +155,7 @@ public class SmackDebugger : MonoBehaviour
 
     private class NullPieceView : IPieceView
     {
+        public void SnapTo(Vector3 worldPos)       { }
         public float MoveTo(Vector3 worldPos) => 0f;
         public float PlayHitShake()           => 0f;
         public float PlayAbilityFX()          => 0f;

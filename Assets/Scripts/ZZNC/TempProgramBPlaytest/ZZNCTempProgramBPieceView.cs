@@ -27,6 +27,16 @@ public class ZZNCTempProgramBPieceView : MonoBehaviour, IPieceView
         _baseScale = transform.localScale;
     }
 
+    public void SnapTo(Vector3 worldPos)
+    {
+        if (_motion != null)
+        {
+            StopCoroutine(_motion);
+            _motion = null;
+        }
+        transform.position = worldPos;
+    }
+
     public float MoveTo(Vector3 worldPos)
     {
         StartMotion(AnimateMove(worldPos));
@@ -47,6 +57,8 @@ public class ZZNCTempProgramBPieceView : MonoBehaviour, IPieceView
 
     public float PlaySpawn()
     {
+        // 确保协程跑第一帧之前不可见（解决 ProcessEventQueue 阶段已可见的问题）
+        transform.localScale = Vector3.zero;
         StartMotion(AnimateSpawn());
         return FxDuration;
     }

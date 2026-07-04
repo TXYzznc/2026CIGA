@@ -12,8 +12,6 @@ public class SmackResolver : MonoBehaviour
 
     // 运行时结算状态
     private SmackRules _rules;
-    private int _currentCombo;
-    private int _maxCombo;
     private int _totalScore;
     private int _totalEventCount;
     private int _currentGravityDir;
@@ -92,17 +90,18 @@ public class SmackResolver : MonoBehaviour
     private IEnumerator DoSmack(int boardOrientation, SmackRules rules, Action<SmackResult> onRoundStable)
     {
         _rules = rules;
-        _currentCombo = 0;
-        _maxCombo = 0;
         _totalScore = 0;
         _totalEventCount = 0;
         _overflow = false;
         _eventQueue.Clear();
         _executedLog.Clear();
 
-        // 重置触发计数
+        // 重置触发计数 + 得分棋独立计数
         foreach (var p in _board.AllPieces())
+        {
             p.TriggerCountThisSmack = 0;
+            p.ScoreHitCount = 0;
+        }
 
         // A3：生成初始重力事件
         _currentGravityDir = Hex.OrientationToGravityDir(boardOrientation);
@@ -117,7 +116,6 @@ public class SmackResolver : MonoBehaviour
         var result = new SmackResult
         {
             ScoreGained = _totalScore,
-            MaxCombo = _maxCombo,
             EventOverflow = _overflow,
         };
         onRoundStable?.Invoke(result);
@@ -257,6 +255,14 @@ public class SmackResolver : MonoBehaviour
             case GameEventType.Spawn:       ExecuteSpawn(ev);       break;
             case GameEventType.Remove:      ExecuteRemove(ev);      break;
             case GameEventType.Score:       ExecuteScore(ev);       break;
+            case GameEventType.BounceMove:  ExecuteBounceMove(ev);  break;
+            case GameEventType.TurnMove:    ExecuteTurnMove(ev);    break;
+            case GameEventType.SwapPosition: ExecuteSwapPosition(ev); break;
+            case GameEventType.ContinueMove: ExecuteContinueMove(ev); break;
+            case GameEventType.StomachMove: ExecuteStomachMove(ev); break;
+            case GameEventType.Consume:     ExecuteConsume(ev);     break;
+            case GameEventType.AreaConsume: ExecuteAreaConsume(ev); break;
+            case GameEventType.RingRotate:  ExecuteRingRotate(ev);  break;
         }
     }
 
@@ -267,26 +273,19 @@ public class SmackResolver : MonoBehaviour
         if (piece == null) { ev.Skipped = true; return; }
 
         ev.FromPos = piece.Position;
+        ev.View = piece.View;
+        if (_boardView != null)
+            ev.FromWorldPos = _boardView.HexToWorld(piece.Position);
 
         Hex to;
         if (isPush)
         {
-            // 爆炸推动：只移 1 格，且可推出棋盘
+            // 爆炸推动：只移 1 格
             var next = piece.Position.Neighbor(ev.Direction);
-            var content = _board.GetContent(next);
-            if (content == CellContent.OutOfBoard)
+            if (_board.GetContent(next) != CellContent.Empty)
             {
-                // 推出棋盘：移除，不碰撞，不触发能力，不加连击
-                ev.ToPos = next;
-                ev.RemovedView = piece.View; // 记录 View，播放器负责播 PlayRemove + DestroyView
-                _board.RemovePiece(piece);
-                return;
-            }
-            if (content != CellContent.Empty)
-            {
-                // 推动失败：目标格有棋子或墙
-                ev.Executed = false;
-                ev.Skipped = true;
+                // 推动失败，ToPos=FromPos，动画时播震动
+                ev.ToPos = piece.Position;
                 return;
             }
             to = next;
@@ -303,7 +302,31 @@ public class SmackResolver : MonoBehaviour
         }
 
         ev.ToPos = to;
+        if (_boardView != null)
+            ev.ToWorldPos = _boardView.HexToWorld(to);
         _board.MovePiece(piece, to);
+
+        // ── 爆炸推动得分 ──────────────────────────────────────────
+        if (isPush)
+        {
+            var evSource = FindPieceById(ev.SourcePieceId);
+            // 爆炸棋每成功推动一枚棋子 +2
+            if (evSource != null && evSource.Type == PieceType.Explosion)
+                RecordScore(2, evSource.Position);
+
+            // 被推动的棋子是得分棋：独立计数 + 指数得分
+            if (piece.Type == PieceType.Score)
+            {
+                piece.ScoreHitCount++;
+                int sDelta = (int)Math.Pow(2, piece.ScoreHitCount);
+                RecordScore(sDelta, piece.Position, piece.ScoreHitCount);
+            }
+            // 被推动的棋子是普通棋："被爆炸影响" +2
+            else if (piece.Type == PieceType.Normal)
+            {
+                RecordScore(2, piece.Position);
+            }
+        }
 
         // 检查正前方是否有棋子
         var frontCell = to.Neighbor(ev.Direction);
@@ -320,14 +343,41 @@ public class SmackResolver : MonoBehaviour
         }
     }
 
+    /// <summary>生成 Score 事件（ExecuteScore 执行时累加总分）。</summary>
+    private void RecordScore(int delta, Hex originPos, int hitNumber = 1)
+    {
+        _eventQueue.Enqueue(new GameEvent
+        {
+            Type = GameEventType.Score,
+            ScoreDelta = delta,
+            ComboAtTrigger = hitNumber,
+            ScoreOriginPos = originPos,
+        });
+    }
+
     private void ExecuteCollision(GameEvent ev)
     {
         var target = FindPieceById(ev.TargetPieceId);
         if (target == null) { ev.Skipped = true; return; }
 
-        // 普通棋子不产生能力事件
+        // 普通棋作为撞击者完成合法碰撞：+2 分
+        var source = FindPieceById(ev.SourcePieceId);
+        if (source != null && source.Type == PieceType.Normal)
+            RecordScore(2, source.Position);
+
+        // 被撞目标是得分棋：独立计数 → 指数得分 2^n
+        if (target.Type == PieceType.Score)
+        {
+            target.ScoreHitCount++;
+            int delta = (int)Math.Pow(2, target.ScoreHitCount);
+            RecordScore(delta, target.Position, target.ScoreHitCount);
+            return; // 得分棋不经过 AbilityTrigger
+        }
+
+        // 普通棋被撞：无能力，不触发
         if (target.Type == PieceType.Normal) return;
 
+        // 其他特殊棋子 → AbilityTrigger
         _eventQueue.Enqueue(new GameEvent
         {
             Type = GameEventType.AbilityTrigger,
@@ -342,46 +392,56 @@ public class SmackResolver : MonoBehaviour
         var target = FindPieceById(ev.TargetPieceId);
         if (target == null) { ev.Skipped = true; return; }
 
-        // 检查单棋子触发上限
         if (target.TriggerCountThisSmack >= _rules.PieceTriggerLimit)
         {
             ev.Skipped = true;
             return;
         }
-
         target.TriggerCountThisSmack++;
-        _currentCombo++;
-        if (_currentCombo > _maxCombo) _maxCombo = _currentCombo;
 
         switch (target.Type)
         {
-            case PieceType.Score:
-                _eventQueue.Enqueue(new GameEvent
-                {
-                    Type = GameEventType.Score,
-                    TargetPieceId = target.ID,
-                    ScoreDelta = _rules.ScorePieceBaseScore * _currentCombo,
-                    ComboAtTrigger = _currentCombo,
-                });
-                break;
-
             case PieceType.Explosion:
-                _eventQueue.Enqueue(new GameEvent
-                {
-                    Type = GameEventType.Explosion,
-                    TargetPieceId = target.ID,
-                    Direction = _currentGravityDir,
-                });
+                _eventQueue.Enqueue(new GameEvent { Type = GameEventType.Explosion, TargetPieceId = target.ID, Direction = _currentGravityDir });
                 break;
 
             case PieceType.Split:
-                _eventQueue.Enqueue(new GameEvent
-                {
-                    Type = GameEventType.Split,
-                    TargetPieceId = target.ID,
-                    Direction = ev.Direction,
-                });
+                _eventQueue.Enqueue(new GameEvent { Type = GameEventType.Split, TargetPieceId = target.ID, Direction = ev.Direction });
                 break;
+
+            // ── 新棋子 ────────────────────────────────────────────
+
+            case PieceType.Bounce:
+                // 把撞击者沿来路反推 1 格
+                _eventQueue.Enqueue(new GameEvent { Type = GameEventType.BounceMove, TargetPieceId = ev.SourcePieceId, Direction = Hex.Opposite(ev.Direction) });
+                break;
+
+            case PieceType.Turn:
+                // 撞击者顺时针转 60° 移动 1 格
+                _eventQueue.Enqueue(new GameEvent { Type = GameEventType.TurnMove, TargetPieceId = ev.SourcePieceId, Direction = Hex.RotateDir(ev.Direction, 1) });
+                break;
+
+            case PieceType.Swap:
+                // 交换位置
+                _eventQueue.Enqueue(new GameEvent { Type = GameEventType.SwapPosition, TargetPieceId = target.ID, SourcePieceId = ev.SourcePieceId, Direction = ev.Direction });
+                break;
+
+            case PieceType.Stomach:
+                // 胃袋沿撞击方向移动吞噬
+                _eventQueue.Enqueue(new GameEvent { Type = GameEventType.StomachMove, TargetPieceId = target.ID, Direction = ev.Direction });
+                break;
+
+            case PieceType.Devour:
+                // 吞噬棋：清除周围 + 自身
+                _eventQueue.Enqueue(new GameEvent { Type = GameEventType.AreaConsume, TargetPieceId = target.ID, Direction = _currentGravityDir });
+                break;
+
+            case PieceType.Whirlwind:
+                // 旋风棋：从撞击者开始顺时针推链
+                _eventQueue.Enqueue(new GameEvent { Type = GameEventType.RingRotate, TargetPieceId = target.ID, SourcePieceId = ev.SourcePieceId, Direction = _currentGravityDir });
+                break;
+
+            default: break;
         }
     }
 
@@ -452,6 +512,290 @@ public class SmackResolver : MonoBehaviour
         });
     }
 
+    // ── 新棋子执行逻辑 ─────────────────────────────────────────
+
+    /// <summary>反弹：把撞击者沿来路反推 1 格。</summary>
+    private void ExecuteBounceMove(GameEvent ev)
+    {
+        var piece = FindPieceById(ev.TargetPieceId);
+        if (piece == null) { ev.Skipped = true; return; }
+        ev.FromPos = piece.Position;
+        ev.View = piece.View;
+
+        var next = piece.Position.Neighbor(ev.Direction);
+        if (_board.GetContent(next) != CellContent.Empty)
+        {
+            ev.ToPos = piece.Position; // 推失败→震动
+            return;
+        }
+        ev.ToPos = next;
+        _board.MovePiece(piece, next);
+        // 碰撞检查
+        var front1 = next.Neighbor(ev.Direction);
+        var fp1 = _board.GetPiece(front1);
+        if (fp1 != null)
+            _eventQueue.Enqueue(new GameEvent { Type = GameEventType.Collision, TargetPieceId = fp1.ID, SourcePieceId = piece.ID, Direction = ev.Direction });
+    }
+
+    /// <summary>转向：撞击者顺时针转 60° 移动 1 格。</summary>
+    private void ExecuteTurnMove(GameEvent ev)
+    {
+        var piece = FindPieceById(ev.TargetPieceId);
+        if (piece == null) { ev.Skipped = true; return; }
+        ev.FromPos = piece.Position;
+        ev.View = piece.View;
+
+        var next = piece.Position.Neighbor(ev.Direction);
+        if (_board.GetContent(next) != CellContent.Empty)
+        {
+            ev.ToPos = piece.Position;
+            return;
+        }
+        ev.ToPos = next;
+        _board.MovePiece(piece, next);
+        // 碰撞检查（沿转向后方向）
+        var front2 = next.Neighbor(ev.Direction);
+        var fp2 = _board.GetPiece(front2);
+        if (fp2 != null)
+            _eventQueue.Enqueue(new GameEvent { Type = GameEventType.Collision, TargetPieceId = fp2.ID, SourcePieceId = piece.ID, Direction = ev.Direction });
+    }
+
+    /// <summary>交换位置：交换棋与撞击者互换位置。</summary>
+    private void ExecuteSwapPosition(GameEvent ev)
+    {
+        var swapPiece = FindPieceById(ev.TargetPieceId);
+        var attacker = FindPieceById(ev.SourcePieceId);
+        if (swapPiece == null || attacker == null) { ev.Skipped = true; return; }
+
+        var swapPos = swapPiece.Position;
+        var attackerPos = attacker.Position;
+
+        // 原子交换，不会丢失任意一方
+        _board.SwapPieces(swapPiece, attacker);
+
+        ev.FromPos = attackerPos;
+        ev.ToPos = swapPos;
+        ev.View = attacker.View;
+
+        // 交换棋也加入动画日志
+        _executedLog.Add(new GameEvent
+        {
+            Type = GameEventType.PushMove,
+            TargetPieceId = swapPiece.ID,
+            FromPos = swapPos,
+            ToPos = attackerPos,
+            View = swapPiece.View,
+            Executed = true,
+        });
+    }
+
+    /// <summary>交换后继续移动：撞击者沿原方向移动到底。</summary>
+    private void ExecuteContinueMove(GameEvent ev)
+    {
+        var piece = FindPieceById(ev.TargetPieceId);
+        if (piece == null) { ev.Skipped = true; return; }
+        ev.FromPos = piece.Position;
+        ev.View = piece.View;
+
+        var to = CalcFarthestOnBoard(piece.Position, ev.Direction);
+        if (to == piece.Position) { ev.Skipped = true; return; }
+
+        ev.ToPos = to;
+        _board.MovePiece(piece, to);
+        var front3 = to.Neighbor(ev.Direction);
+        var fp3 = _board.GetPiece(front3);
+        if (fp3 != null)
+            _eventQueue.Enqueue(new GameEvent { Type = GameEventType.Collision, TargetPieceId = fp3.ID, SourcePieceId = piece.ID, Direction = ev.Direction });
+    }
+
+    /// <summary>胃袋：沿方向前进，吃掉路径上所有棋子。</summary>
+    private void ExecuteStomachMove(GameEvent ev)
+    {
+        var stomach = FindPieceById(ev.TargetPieceId);
+        if (stomach == null) { ev.Skipped = true; return; }
+        ev.FromPos = stomach.Position;
+        ev.View = stomach.View;
+
+        int dir = ev.Direction;
+        int eaten = 0;
+        var cur = stomach.Position;
+
+        while (true)
+        {
+            var next = cur.Neighbor(dir);
+            var content = _board.GetContent(next);
+            if (content == CellContent.Wall || content == CellContent.OutOfBoard) break;
+
+            if (content == CellContent.Piece)
+            {
+                var target = _board.GetPiece(next);
+                if (target != null)
+                {
+                    // 立即从棋盘删除被吃棋子，否则胃袋移入时覆盖、后续 Consume 会误删胃袋
+                    var eatenView = target.View;
+                    _board.RemovePiece(target);
+                    _executedLog.Add(new GameEvent
+                    {
+                        Type = GameEventType.Consume,
+                        RemovedView = eatenView,
+                        FromPos = target.Position,
+                        ToPos = target.Position,
+                        Executed = true,
+                    });
+                    eaten++;
+                }
+            }
+            // 胃袋进入下一格（空或棋子已删）
+            _board.MovePiece(stomach, next);
+            cur = next;
+        }
+        ev.ToPos = cur;
+        if (eaten > 0) RecordScore(eaten * 2, cur);
+    }
+
+    /// <summary>单个吞噬删除（胃袋用）。</summary>
+    private void ExecuteConsume(GameEvent ev)
+    {
+        var piece = FindPieceById(ev.TargetPieceId);
+        if (piece == null) { ev.Skipped = true; return; }
+        ev.FromPos = piece.Position;
+        ev.RemovedView = piece.View;
+        _board.RemovePiece(piece);
+    }
+
+    /// <summary>吞噬棋：清除周围全部棋子（含撞击者）+ 自身。</summary>
+    private void ExecuteAreaConsume(GameEvent ev)
+    {
+        var devour = FindPieceById(ev.TargetPieceId);
+        if (devour == null) { ev.Skipped = true; return; }
+
+        int gravDir = ev.Direction;
+        int eaten = 0;
+
+        // 遍历 6 个方向
+        for (int i = 0; i < 6; i++)
+        {
+            int dir = Hex.RotateDir(gravDir, i);
+            var neighbor = devour.Position.Neighbor(dir);
+            var content = _board.GetContent(neighbor);
+            if (content == CellContent.Piece)
+            {
+                var target = _board.GetPiece(neighbor);
+                if (target != null)
+                {
+                    _eventQueue.Enqueue(new GameEvent { Type = GameEventType.Consume, TargetPieceId = target.ID, SourcePieceId = devour.ID });
+                    eaten++;
+                }
+            }
+        }
+
+        // 自身删除
+        _eventQueue.Enqueue(new GameEvent { Type = GameEventType.Remove, TargetPieceId = devour.ID });
+
+        if (eaten > 0) RecordScore(eaten * 3, devour.Position);
+    }
+
+    /// <summary>旋风棋：顺时针旋转相邻棋子一格。</summary>
+    private void ExecuteRingRotate(GameEvent ev)
+    {
+        var center = FindPieceById(ev.TargetPieceId);
+        if (center == null) { ev.Skipped = true; return; }
+
+        int gravDir = ev.Direction;
+        // 收集合法环位置（顺时针）
+        var ring = new List<Hex>();
+        for (int i = 0; i < 6; i++)
+        {
+            int dir = Hex.RotateDir(gravDir, i);
+            var pos = center.Position.Neighbor(dir);
+            if (_board.GetContent(pos) != CellContent.OutOfBoard && _board.GetContent(pos) != CellContent.Wall)
+                ring.Add(pos);
+        }
+        if (ring.Count < 2) return;
+
+        // 找到撞击者在环中的位置
+        var attacker = FindPieceById(ev.SourcePieceId);
+        int startIdx = -1;
+        if (attacker != null)
+        {
+            for (int i = 0; i < ring.Count; i++)
+                if (ring[i] == attacker.Position) { startIdx = i; break; }
+        }
+        if (startIdx < 0) return; // 撞击者不在环中（不可能）
+
+        // 从撞击者开始顺时针收集连续有棋子的位置链
+        var chainIdx = new List<int>();
+        int ci = startIdx;
+        while (true)
+        {
+            int next = (ci + 1) % ring.Count;
+            if (_board.GetContent(ring[next]) != CellContent.Piece) break;
+            chainIdx.Add(next);
+            ci = next;
+            if (ci == startIdx) break; // 环满
+        }
+
+        // 从链尾到链首逐个顺时针推一格
+        for (int i = chainIdx.Count - 1; i >= 0; i--)
+        {
+            int fromIdx = chainIdx[i];
+            int toIdx = (fromIdx + 1) % ring.Count;
+            var fromPos = ring[fromIdx];
+            var toPos = ring[toIdx];
+            var piece = _board.GetPiece(fromPos);
+            if (piece == null) continue;
+
+            _board.MovePiece(piece, toPos);
+            _executedLog.Add(new GameEvent
+            {
+                Type = GameEventType.PushMove,
+                TargetPieceId = piece.ID,
+                SourcePieceId = center.ID,
+                FromPos = fromPos,
+                ToPos = toPos,
+                View = piece.View,
+                Executed = true,
+            });
+
+            // 碰撞检查（下一格有棋子则产生碰撞）
+            int frontIdx = (toIdx + 1) % ring.Count;
+            var frontPos = ring[frontIdx];
+            var frontPiece = _board.GetPiece(frontPos);
+            if (frontPiece != null)
+            {
+                _eventQueue.Enqueue(new GameEvent { Type = GameEventType.Collision, TargetPieceId = frontPiece.ID, SourcePieceId = piece.ID, Direction = gravDir });
+            }
+        }
+
+        // 最后：撞击者本身移入腾空的下一格
+        int attackerToIdx = (startIdx + 1) % ring.Count;
+        var attackerToPos = ring[attackerToIdx];
+        if (_board.GetContent(attackerToPos) == CellContent.Empty)
+        {
+            var attackerFromPos = attacker.Position;
+            _board.MovePiece(attacker, attackerToPos);
+            _executedLog.Add(new GameEvent
+            {
+                Type = GameEventType.PushMove,
+                TargetPieceId = attacker.ID,
+                SourcePieceId = center.ID,
+                FromPos = attackerFromPos,
+                ToPos = attackerToPos,
+                View = attacker.View,
+                Executed = true,
+            });
+
+            // 撞击者移动后碰撞检查
+            int attackerFrontIdx = (attackerToIdx + 1) % ring.Count;
+            var attackerFront = ring[attackerFrontIdx];
+            var attackerFrontPiece = _board.GetPiece(attackerFront);
+            if (attackerFrontPiece != null)
+            {
+                _eventQueue.Enqueue(new GameEvent { Type = GameEventType.Collision, TargetPieceId = attackerFrontPiece.ID, SourcePieceId = attacker.ID, Direction = gravDir });
+            }
+        }
+    }
+
     private void ExecuteSpawn(GameEvent ev)
     {
         int spawnDir = ev.Direction;
@@ -470,8 +814,14 @@ public class SmackResolver : MonoBehaviour
 
         var newPiece = new Piece { Type = ev.SpawnType };
 
+        // View 创建在分裂原点（SpawnPos），动画阶段先播 Spawn 再 MoveTo 到目标
         if (_factory != null)
-            newPiece.View = _factory.CreateView(ev.SpawnType, finalPos);
+        {
+            newPiece.View = _factory.CreateView(ev.SpawnType, ev.SpawnPos);
+            // 立即设为不可见，否则 ProcessEventQueue 阶段到动画播放之间会裸奔几百毫秒
+            if (newPiece.View is Component comp)
+                comp.transform.localScale = Vector3.zero;
+        }
 
         _board.PlacePiece(newPiece, finalPos);
         ev.SpawnedPiece = newPiece; // 记录引用，播放器用于播 PlaySpawn
@@ -543,6 +893,23 @@ public class SmackResolver : MonoBehaviour
             var pushTo = chain[i].Neighbor(spawnDir);
             _board.MovePiece(piece, pushTo);
 
+            // 被分裂挤压的得分棋：独立计数 + 指数得分
+            if (piece.Type == PieceType.Score)
+            {
+                piece.ScoreHitCount++;
+                int sDelta = (int)Math.Pow(2, piece.ScoreHitCount);
+                _totalScore += sDelta;
+                // 链推不经过事件队列，直接记录动画用的事件
+                _executedLog.Add(new GameEvent
+                {
+                    Type = GameEventType.Score,
+                    ScoreDelta = sDelta,
+                    ComboAtTrigger = piece.ScoreHitCount,
+                    ScoreOriginPos = pushTo,
+                    Executed = true,
+                });
+            }
+
             _executedLog.Add(new GameEvent
             {
                 Type = GameEventType.PushMove,
@@ -551,6 +918,7 @@ public class SmackResolver : MonoBehaviour
                 Direction = spawnDir,
                 FromPos = from,
                 ToPos = pushTo,
+                View = piece.View,
                 Executed = true,
             });
 
@@ -642,9 +1010,7 @@ public class SmackResolver : MonoBehaviour
     private void ExecuteScore(GameEvent ev)
     {
         _totalScore += ev.ScoreDelta;
-        // ScoreOriginPos 由 AbilityTrigger 调用前已知（得分棋位置）
-        var scorePiece = FindPieceById(ev.TargetPieceId);
-        ev.ScoreOriginPos = scorePiece?.Position ?? default;
+        // ScoreOriginPos 已在 RecordScore 或链推时设定，无需修改
     }
 
     // ── 工具 ─────────────────────────────────────────────────────
@@ -701,22 +1067,40 @@ public class SmackResolver : MonoBehaviour
         {
             case GameEventType.GravityMove:
             case GameEventType.PushMove:
+            case GameEventType.BounceMove:
+            case GameEventType.TurnMove:
+            case GameEventType.SwapPosition:
+            case GameEventType.ContinueMove:
+            case GameEventType.StomachMove:
             {
                 if (ev.RemovedView != null)
                 {
-                    // 被推出棋盘：播移除动画后销毁
                     duration = ev.RemovedView.PlayRemove();
                     if (duration > 0f) yield return new WaitForSeconds(duration);
                     _factory?.DestroyView(ev.RemovedView);
                     yield break;
                 }
-                var piece = FindPieceByPos(ev.ToPos) ?? FindPieceById(ev.TargetPieceId);
-                if (piece?.View != null && _boardView != null)
-                    duration = piece.View.MoveTo(_boardView.HexToWorld(ev.ToPos));
+                if (ev.View != null && _boardView != null)
+                {
+                    bool isFail = (ev.Type == GameEventType.PushMove || ev.Type == GameEventType.BounceMove || ev.Type == GameEventType.TurnMove)
+                                  && ev.FromPos == ev.ToPos;
+                    if (isFail)
+                    {
+                        duration = ev.View.PlayHitShake();
+                    }
+                    else
+                    {
+                        var fromWorld = _boardView.HexToWorld(ev.FromPos);
+                        var toWorld = _boardView.HexToWorld(ev.ToPos);
+                        ev.View.SnapTo(fromWorld);
+                        duration = ev.View.MoveTo(toWorld);
+                    }
+                }
                 break;
             }
             case GameEventType.Collision:
             {
+                // 碰撞事件已记录关联棋子ID，用存储的 View（如果有用碰撞目标）
                 var target = FindPieceById(ev.TargetPieceId);
                 if (target?.View != null)
                     duration = target.View.PlayHitShake();
@@ -731,20 +1115,32 @@ public class SmackResolver : MonoBehaviour
             }
             case GameEventType.Spawn:
             {
-                if (ev.SpawnedPiece?.View != null)
-                    duration = ev.SpawnedPiece.View.PlaySpawn();
-                break;
+                if (ev.SpawnedPiece?.View != null && _boardView != null)
+                {
+                    // 从分裂原点 Snap，播生成动画，再移动到最终位置
+                    var originWorld = _boardView.HexToWorld(ev.SpawnPos);
+                    var targetWorld = _boardView.HexToWorld(ev.ToPos);
+                    ev.SpawnedPiece.View.SnapTo(originWorld);
+                    float spawnDur = ev.SpawnedPiece.View.PlaySpawn();
+                    if (spawnDur > 0f) yield return new WaitForSeconds(spawnDur);
+                    if (originWorld != targetWorld)
+                    {
+                        float moveDur = ev.SpawnedPiece.View.MoveTo(targetWorld);
+                        if (moveDur > 0f) yield return new WaitForSeconds(moveDur);
+                    }
+                }
+                yield break; // 已自行处理等待，跳过末尾统一 WaitForSeconds
             }
             case GameEventType.Remove:
+            case GameEventType.Consume:
             {
-                // 使用执行阶段记录的 View 引用（piece 已从 Board 移除）
                 if (ev.RemovedView != null)
                 {
                     duration = ev.RemovedView.PlayRemove();
                     if (duration > 0f) yield return new WaitForSeconds(duration);
                     _factory?.DestroyView(ev.RemovedView);
                 }
-                yield break; // 已自己处理等待，跳过末尾的统一 WaitForSeconds
+                yield break;
             }
             case GameEventType.Score:
             {
@@ -761,5 +1157,5 @@ public class SmackResolver : MonoBehaviour
             yield return new WaitForSeconds(duration);
     }
 
-    private Piece FindPieceByPos(Hex pos) => _board.GetPiece(pos);
+
 }

@@ -1,3 +1,5 @@
+using UnityEngine;
+
 public enum GameEventType
 {
     GravityMove,
@@ -9,6 +11,16 @@ public enum GameEventType
     Spawn,
     Remove,
     Score,
+
+    // 新棋子事件
+    BounceMove,     // 反弹移动
+    TurnMove,       // 转向移动
+    SwapPosition,   // 交换位置
+    ContinueMove,   // 交换后继续移动
+    StomachMove,    // 胃袋连续移动
+    Consume,        // 单个吞噬删除
+    AreaConsume,    // 相邻范围吞噬
+    RingRotate,     // 旋风环状态轮换
 }
 
 public class GameEvent
@@ -32,10 +44,20 @@ public class GameEvent
     public bool Skipped;
     public Hex FromPos;
     public Hex ToPos;
+    public Vector3 FromWorldPos;
+    public Vector3 ToWorldPos;
 
-    public IPieceView RemovedView;   // Remove/推出棋盘时记录，Board移除后播放器仍可用
-    public Piece SpawnedPiece;       // Spawn后记录，播放器播SpawnFX用
-    public Hex ScoreOriginPos;       // Score事件触发位置，飘分用
+    public IPieceView View;
+
+    public IPieceView RemovedView;
+    public Piece SpawnedPiece;
+    public Hex ScoreOriginPos;
+
+    // 胃袋/吞噬计数
+    public int ConsumeCount;
+
+    // 旋风环旋转快照（位置数组），最多6格
+    public Hex[] RingSnapshot;
 
     public override string ToString() =>
         $"[{Type}] target={TargetPieceId} src={SourcePieceId} dir={Direction}";
