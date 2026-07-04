@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 
 [System.Serializable]
 public struct PieceEntry
@@ -10,6 +11,13 @@ public struct PieceEntry
     public PieceType type;
     public int q;
     public int r;
+}
+
+[System.Serializable]
+public struct PieceWeight
+{
+    public PieceType type;
+    public int weight;
 }
 
 /// <summary>
@@ -60,7 +68,22 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     [SerializeField] private Sprite spriteSwap;
     [SerializeField] private Sprite spriteWhirlwind;
 
-    [Header("=== 当前布局（只添加棋子；墙体由边缘裁切自动生成）===")]
+    [Header("=== 棋子生成 ===")]
+    [SerializeField] private bool randomizePieces = true;
+    [SerializeField, Range(0, 100)] private int initialPieceCount = 20;
+    [SerializeField] private List<PieceWeight> pieceWeights = new List<PieceWeight>
+    {
+        new PieceWeight { type = PieceType.Normal,    weight = 20 },
+        new PieceWeight { type = PieceType.Score,     weight = 20 },
+        new PieceWeight { type = PieceType.Explosion, weight = 10 },
+        new PieceWeight { type = PieceType.Split,     weight = 5  },
+        new PieceWeight { type = PieceType.Bounce,    weight = 20 },
+        new PieceWeight { type = PieceType.Stomach,   weight = 10 },
+        new PieceWeight { type = PieceType.Devour,    weight = 15 },
+        new PieceWeight { type = PieceType.Turn,      weight = 20 },
+        new PieceWeight { type = PieceType.Swap,      weight = 20 },
+        new PieceWeight { type = PieceType.Whirlwind, weight = 10 },
+    };
     [SerializeField] private List<PieceEntry> pieces = new List<PieceEntry>();
 
     [Header("=== 特效 ===")]
@@ -108,6 +131,11 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     private IThreeChoiceService _choiceService;
     private bool _gameActive;
     private bool _waitingForChoice;
+    private bool _isChoicePanelOpen;
+    private Transform _choiceRoot;
+    private GameObject _choiceMask;
+    private int _choicePoolTotalWeight;
+    private readonly List<PieceType> _choiceSeed = new List<PieceType>();
 
     private static readonly Color HoverCellTint = new Color(1f, 0.92f, 0.55f, 1f);
     private const int HexMaskTextureSize = 1024;
