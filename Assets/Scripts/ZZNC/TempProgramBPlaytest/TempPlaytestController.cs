@@ -154,7 +154,12 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         EnsureComboPulse();
 
         if (hudView != null)
+        {
             hudView.OnSmackClicked += OnSmackRequest;
+            hudView.OnAnticlockWiseClicked += OnAnticlockWiseRequest;
+            hudView.OnClockWiseClicked += OnClockWiseRequest;
+            hudView.OnRetryClicked += RestartCurrentLevel;
+        }
         if (mainMenuView != null)
             mainMenuView.OnStartClicked += StartNewGame;
         if (settlementView != null)
@@ -192,7 +197,12 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     private void OnDestroy()
     {
         if (hudView != null)
+        {
             hudView.OnSmackClicked -= OnSmackRequest;
+            hudView.OnAnticlockWiseClicked -= OnAnticlockWiseRequest;
+            hudView.OnClockWiseClicked -= OnClockWiseRequest;
+            hudView.OnRetryClicked -= RestartCurrentLevel;
+        }
         if (mainMenuView != null)
             mainMenuView.OnStartClicked -= StartNewGame;
         if (settlementView != null)
@@ -263,6 +273,23 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         boardOrientation = _targetOrientation; // 立即更新重力方向，不等动画结束
         // 反方向蓄力一脚，产生"先回拉再弹出"的物理感
         _springVelocity -= direction * 10f;
+    }
+
+    private void OnAnticlockWiseRequest()
+    {
+        if (!CanAcceptBoardInput()) return;
+        RotateTarget(1);
+    }
+
+    private void OnClockWiseRequest()
+    {
+        if (!CanAcceptBoardInput()) return;
+        RotateTarget(-1);
+    }
+
+    private bool CanAcceptBoardInput()
+    {
+        return _gameActive && !_isResolving && !_waitingForChoice && !_isChoicePanelOpen;
     }
 
     public Vector3 HexToWorld(Hex hex)
@@ -504,6 +531,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
 
         hudView?.SetTargetScore(_currentRound.targetScore);
         hudView?.SetScoreImmediate(currentScore);
+        hudView?.SetRemainingSmacks(remainingSmacks, _currentRound.smackCount);
         hudView?.SetSmackButtonInteractable(true);
 
         if (rebuildBoard)
@@ -534,6 +562,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         _waitingForChoice = false;
         _isResolving = false;
         hudView?.SetSmackButtonInteractable(false);
+        hudView?.SetRemainingSmacks(0, 0);
         settlementView?.Hide();
         mainMenuView?.Show();
         ClearPreview();
@@ -766,6 +795,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     private void OnSmackStable()
     {
         remainingSmacks = Mathf.Max(0, remainingSmacks - 1);
+        hudView?.SetRemainingSmacks(remainingSmacks, _currentRound != null ? _currentRound.smackCount : 0);
 
         if (remainingSmacks > 0)
         {

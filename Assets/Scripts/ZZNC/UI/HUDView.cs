@@ -12,12 +12,20 @@ public class HUDView : MonoBehaviour
 {
     [SerializeField] private TMP_Text scoreText;
     [SerializeField] private TMP_Text targetScoreText;
+    [SerializeField] private TMP_Text curScoreText;
+    [SerializeField] private TMP_Text smackCountText;
 
     [Header("拍击按钮")]
     [SerializeField] private Button smackButton;
+    [SerializeField] private Button anticlockWiseButton;
+    [SerializeField] private Button clockWiseButton;
+    [SerializeField] private Button retryButton;
 
     /// <summary>GamePlay 程序注册此事件以响应拍击按钮点击。</summary>
     public event Action OnSmackClicked;
+    public event Action OnAnticlockWiseClicked;
+    public event Action OnClockWiseClicked;
+    public event Action OnRetryClicked;
 
     [Header("动效参数 - 滚动")]
     [SerializeField] private float rollDuration = 0.4f;
@@ -31,46 +39,46 @@ public class HUDView : MonoBehaviour
     [SerializeField] private float maxPunchDuration = 0.80f;
 
     private int _displayedScore;
+    private int _displayedCurScore;
     private Tweener _rollTween;
+    private Tweener _curScoreRollTween;
 
     private void Awake()
     {
         _displayedScore = 0;
+        _displayedCurScore = 0;
         if (smackButton != null)
-            smackButton.onClick.AddListener(() => OnSmackClicked?.Invoke());
+            smackButton.onClick.AddListener(ClickSmack);
+        if (anticlockWiseButton != null)
+            anticlockWiseButton.onClick.AddListener(ClickAnticlockWise);
+        if (clockWiseButton != null)
+            clockWiseButton.onClick.AddListener(ClickClockWise);
+        if (retryButton != null)
+            retryButton.onClick.AddListener(ClickRetry);
     }
+
+    private void ClickSmack() => OnSmackClicked?.Invoke();
+    private void ClickAnticlockWise() => OnAnticlockWiseClicked?.Invoke();
+    private void ClickClockWise() => OnClockWiseClicked?.Invoke();
+    private void ClickRetry() => OnRetryClicked?.Invoke();
 
     /// <summary>设置拍击按钮是否可交互（结算中由 GamePlay 置灰）。</summary>
     public void SetSmackButtonInteractable(bool interactable)
     {
         if (smackButton != null)
             smackButton.interactable = interactable;
+        if (anticlockWiseButton != null)
+            anticlockWiseButton.interactable = interactable;
+        if (clockWiseButton != null)
+            clockWiseButton.interactable = interactable;
+        if (retryButton != null)
+            retryButton.interactable = interactable;
     }
 
     /// <summary>更新当前分数，带滚动+弹跳动效。</summary>
     public void SetScore(int score)
     {
-        int delta = Mathf.Abs(score - _displayedScore);
-        float punch = CalcPunch(delta);
-
-        _rollTween?.Kill();
-
-        int from = _displayedScore;
-        _rollTween = DOTween.To(
-            () => from,
-            v =>
-            {
-                from = v;
-                _displayedScore = v;
-                if (scoreText != null)
-                    scoreText.text = NumText.ToSpriteTags(v);
-            },
-            score,
-            rollDuration
-        ).SetEase(Ease.OutCubic);
-
-        if (scoreText != null && punch > 0f)
-            scoreText.transform.DOPunchScale(Vector3.one * punch, CalcPunchDuration(delta), 1, 0.5f);
+        SetNumberText(score, scoreText, _displayedScore, v => _displayedScore = v, ref _rollTween);
     }
 
     private float Log2T(int delta)
@@ -94,6 +102,19 @@ public class HUDView : MonoBehaviour
             targetScoreText.text = "/  " + NumText.ToSpriteTags(target);
     }
 
+    public void SetRemainingSmacks(int remaining, int total)
+    {
+        SetCurScore(remaining);
+
+        if (smackCountText != null)
+            smackCountText.text = $"{remaining}/{total}";
+    }
+
+    private void SetCurScore(int score)
+    {
+        SetNumberText(score, curScoreText, _displayedCurScore, v => _displayedCurScore = v, ref _curScoreRollTween);
+    }
+
     /// <summary>在当前显示分数基础上增加 delta，带动效。</summary>
     public void AddScore(int delta)
     {
@@ -114,16 +135,53 @@ public class HUDView : MonoBehaviour
     /// <summary>不带动效直接刷新（初始化场景时用）。</summary>
     public void SetScoreImmediate(int score)
     {
-        _rollTween?.Kill();
-        _displayedScore = score;
-        if (scoreText != null)
-            scoreText.text = NumText.ToSpriteTags(score);
+        SetNumberTextImmediate(score, scoreText, v => _displayedScore = v, ref _rollTween);
+    }
+
+    private void SetNumberText(int score, TMP_Text text, int displayedScore, Action<int> setDisplayedScore, ref Tweener rollTween)
+    {
+        int delta = Mathf.Abs(score - displayedScore);
+        float punch = CalcPunch(delta);
+
+        rollTween?.Kill();
+
+        int from = displayedScore;
+        rollTween = DOTween.To(
+            () => from,
+            v =>
+            {
+                from = v;
+                setDisplayedScore(v);
+                if (text != null)
+                    text.text = NumText.ToSpriteTags(v);
+            },
+            score,
+            rollDuration
+        ).SetEase(Ease.OutCubic);
+
+        if (text != null && punch > 0f)
+            text.transform.DOPunchScale(Vector3.one * punch, CalcPunchDuration(delta), 1, 0.5f);
+    }
+
+    private void SetNumberTextImmediate(int score, TMP_Text text, Action<int> setDisplayedScore, ref Tweener rollTween)
+    {
+        rollTween?.Kill();
+        setDisplayedScore(score);
+        if (text != null)
+            text.text = NumText.ToSpriteTags(score);
     }
 
     private void OnDestroy()
     {
         _rollTween?.Kill();
+        _curScoreRollTween?.Kill();
         if (smackButton != null)
-            smackButton.onClick.RemoveAllListeners();
+            smackButton.onClick.RemoveListener(ClickSmack);
+        if (anticlockWiseButton != null)
+            anticlockWiseButton.onClick.RemoveListener(ClickAnticlockWise);
+        if (clockWiseButton != null)
+            clockWiseButton.onClick.RemoveListener(ClickClockWise);
+        if (retryButton != null)
+            retryButton.onClick.RemoveListener(ClickRetry);
     }
 }
