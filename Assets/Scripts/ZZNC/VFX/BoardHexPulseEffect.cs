@@ -33,7 +33,7 @@ public class BoardHexPulseEffect : MonoBehaviour
     {
         EnsureRings();
 
-        _outerRadius = Mathf.Sqrt(3f) * boardRadius * cellSize + cellSize * 0.68f;
+        _outerRadius = 2f * boardRadius * cellSize;
         for (int i = 0; i < CornerCount; i++)
         {
             float angle = 60f * i * Mathf.Deg2Rad;

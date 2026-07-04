@@ -27,8 +27,8 @@ public class BoardEdgeGlowEffect : MonoBehaviour
     {
         EnsureLine();
 
-        // The board cells stay pointy-top, while the large board outline is flat-top.
-        float outer = Mathf.Sqrt(3f) * boardRadius * cellSize + cellSize * 0.68f;
+        // Keep the outline in sync with TempPlaytestController.EnsureBoardMask().
+        float outer = 2f * boardRadius * cellSize;
 
         _line.positionCount = 6;
         for (int i = 0; i < 6; i++)

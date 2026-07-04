@@ -12,13 +12,6 @@ public struct PieceEntry
     public int r;
 }
 
-[System.Serializable]
-public struct WallEntry
-{
-    public int q;
-    public int r;
-}
-
 /// <summary>
 /// 在 Inspector 里拖 Sprite + 配棋子列表，运行时按 Tab 键热重载布局。
 /// </summary>
@@ -65,9 +58,8 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     [SerializeField] private Sprite spriteSwap;
     [SerializeField] private Sprite spriteWhirlwind;
 
-    [Header("=== 当前布局（在下面列表加点）===")]
+    [Header("=== 当前布局（只添加棋子；墙体由边缘裁切自动生成）===")]
     [SerializeField] private List<PieceEntry> pieces = new List<PieceEntry>();
-    [SerializeField] private List<WallEntry> walls = new List<WallEntry>();
 
     [Header("=== 特效 ===")]
     [SerializeField] private SmackImpactVFX impactVFX;
@@ -286,19 +278,13 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         _board.Clear();
         _board.SetShape(MakeMaskedShape());
 
-        var origin = new Hex(0, 0);
         var wallSet = new HashSet<Hex>();
-        foreach (var w in walls)
-        {
-            var hex = new Hex(w.q, w.r);
-            wallSet.Add(hex);
-            _board.PlaceWall(hex);
-        }
 
-        // 可玩区（半径 boardRadius）之外、大六边形轮廓之内的格子一律作为墙
+        // 规则：只有被大六边形遮罩裁切的“残缺格”才是墙体。
+        // 所有完整的小六边形（哪怕轴向距离超过旧 boardRadius）都是正常可玩格。
         foreach (var cell in _board.AllInsideCells())
         {
-            if (cell.Distance(origin) > boardRadius && wallSet.Add(cell))
+            if (IsClippedEdgeCell(cell) && wallSet.Add(cell))
                 _board.PlaceWall(cell);
         }
 
@@ -334,14 +320,14 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         ApplyBoardRotation();
 
         // 初始化旋转特效
-        boardEdgeGlow?.Setup(boardRadius, CellSize);
+        boardEdgeGlow?.Setup(OuterRadius, CellSize);
         EnsureComboPulse();
-        comboPulse?.Setup(boardRadius, CellSize);
+        comboPulse?.Setup(OuterRadius, CellSize);
         previewRenderer?.Setup(previewDotPrefab, 0.78f * LayoutScale, _effectsRoot);
 
         RefreshPreview();
         LogBoardShape();
-        Debug.Log($"[Layout] 已加载 {pieces.Count} 枚棋子, {walls.Count} 面墙. 空格=拍击, Q=撤销, Tab=重载布局");
+        Debug.Log($"[Layout] 已加载 {pieces.Count} 枚棋子, 自动生成 {wallSet.Count} 个残缺边缘墙体. 空格=拍击, Q=撤销, Tab=重载布局");
     }
 
     private TempPieceView CreatePieceView(PieceType type, Hex pos)
@@ -626,6 +612,36 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         }
     }
 
+    /// <summary>
+    /// 是否为会被外层大六边形遮罩切掉一部分的边缘格。
+    /// 只要小六边形的任一顶点落在遮罩外，就归类为墙体；六个顶点都在内的格子一律为正常格。
+    /// </summary>
+    private bool IsClippedEdgeCell(Hex cell)
+    {
+        const float epsilon = 0.0001f;
+        const float cos60 = 0.5f;
+        var sin60 = Mathf.Sqrt(3f) * 0.5f;
+        var apothem = Mathf.Sqrt(3f) * OuterRadius * CellSize;
+        var center = HexToLocal(cell);
+
+        // 棋盘格在本地坐标中是尖顶六边形，外接圆半径为 CellSize。
+        for (var i = 0; i < 6; i++)
+        {
+            var angle = (90f + i * 60f) * Mathf.Deg2Rad;
+            var vertex = center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * CellSize;
+            var d = Mathf.Max(
+                Mathf.Abs(vertex.x),
+                Mathf.Max(
+                    Mathf.Abs(cos60 * vertex.x + sin60 * vertex.y),
+                    Mathf.Abs(cos60 * vertex.x - sin60 * vertex.y)));
+
+            if (d > apothem + epsilon)
+                return true;
+        }
+
+        return false;
+    }
+
     private Vector2 HexToLocal(Hex hex)
     {
         var x = Mathf.Sqrt(3f) * (hex.q + hex.r * 0.5f) * CellSize;
@@ -650,7 +666,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
             max = Vector2.Max(max, p);
         }
 
-        Debug.Log($"[Layout.Shape] cells={cells.Count}, radius={boardRadius}, cellSize={CellSize:F3}, visualOffset={VisualBoardAngleOffset:F1}, rotationZ={transform.eulerAngles.z:F1}, worldBounds=({min.x:F2},{min.y:F2})..({max.x:F2},{max.y:F2})");
+        Debug.Log($"[Layout.Shape] cells={cells.Count}, outerRadius={OuterRadius}, cellSize={CellSize:F3}, visualOffset={VisualBoardAngleOffset:F1}, rotationZ={transform.eulerAngles.z:F1}, worldBounds=({min.x:F2},{min.y:F2})..({max.x:F2},{max.y:F2})");
     }
 
     private void EnsureHoverTooltip()
