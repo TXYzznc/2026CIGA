@@ -4,6 +4,12 @@ public enum PieceType
     Score,
     Explosion,
     Split,
+    Bounce,
+    Stomach,
+    Devour,
+    Turn,
+    Swap,
+    Whirlwind,
 }
 
 public enum CellContent
