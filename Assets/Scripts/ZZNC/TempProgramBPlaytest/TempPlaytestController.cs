@@ -70,6 +70,9 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     [SerializeField] private HUDView hudView;
     [SerializeField] private BoardEdgeGlowEffect boardEdgeGlow;
     [SerializeField] private RotationPreviewRenderer previewRenderer;
+    [SerializeField] private PieceTooltip pieceTooltip;
+    [SerializeField, Range(0f, 2f)] private float tooltipHoverDelay = 0.5f;
+    [SerializeField] private BoardHexPulseEffect comboPulse;
 
     [Header("Runtime Info（只读）")]
     [SerializeField] private int boardOrientation;
@@ -83,19 +86,28 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     private Transform _effectsRoot;
     private SmackResolver _resolver;
     private bool _isResolving;
+    private int _comboCount;
+    private Hex? _hoveredHex;
+    private SpriteRenderer _hoveredCellRenderer;
+    private Color _hoveredCellBaseColor;
+    private float _hoveredHexSince;
     private float _visualAngle;        // 当前视觉角度（弹簧驱动）
     private float _springVelocity;     // 弹簧速度
     private int _targetOrientation;    // 逻辑目标朝向
     private Board.Snapshot _snapshot;
 
+    private static readonly Color HoverCellTint = new Color(1f, 0.92f, 0.55f, 1f);
+
     private void Awake()
     {
         EnsureRoots();
+        EnsureHoverTooltip();
         _resolver = gameObject.GetComponent<SmackResolver>();
         if (_resolver == null)
             _resolver = gameObject.AddComponent<SmackResolver>();
 
         _resolver.Init(_board, this, this, this);
+        EnsureComboPulse();
 
         if (hudView != null)
             hudView.OnSmackClicked += OnSmackRequest;
@@ -112,6 +124,8 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     {
         if (hudView != null)
             hudView.OnSmackClicked -= OnSmackRequest;
+
+        ClearHoveredCell();
     }
 
     private void Update()
@@ -120,6 +134,8 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         {
             // 结算期间持续把流光速度归零，让 SmoothDamp 正常淡出
             boardEdgeGlow?.SetSpeed(0f);
+            pieceTooltip?.Hide();
+            ClearHoveredCell();
             return;
         }
 
@@ -158,6 +174,8 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
 
         if (Input.GetKeyDown(KeyCode.Q))
             UndoLastSmack();
+
+        UpdateHoverTooltip();
         if (Input.GetKeyDown(KeyCode.Tab))
             BuildLayout();
     }
@@ -197,6 +215,9 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         hudView?.AddScore(scoreDelta);
         float shake = 0.1f + combo * 0.015f;
         hudView?.ShakeScore(shake);
+        _comboCount++;
+        comboPulse?.Pulse(_comboCount);
+        Debug.Log($"[ZZNC.TempProgramB] Score +{scoreDelta}, Combo {_comboCount}, At {worldPos}");
 
         var go = new GameObject($"ScorePopup_{scoreDelta}");
         go.transform.position = worldPos + new Vector3(0f, 0f, -0.5f);
@@ -278,6 +299,8 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     private void BuildLayout()
     {
         _isResolving = false;
+        pieceTooltip?.Hide();
+        ClearHoveredCell();
         ClearPreview();
         ClearChildren(_cellsRoot);
         ClearChildren(_piecesRoot);
@@ -324,6 +347,8 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
 
         // 初始化旋转特效
         boardEdgeGlow?.Setup(boardRadius, CellSize);
+        EnsureComboPulse();
+        comboPulse?.Setup(boardRadius, CellSize);
         previewRenderer?.Setup(previewDotPrefab, 0.78f * LayoutScale, _effectsRoot);
 
         RefreshPreview();
@@ -381,6 +406,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         boardOrientation = _targetOrientation;
 
         _isResolving = true;
+        _comboCount  = 0;
         ClearPreview();
         var gravityDir = Hex.OrientationToGravityDir(boardOrientation);
         Debug.Log($"[ZZNC.TempProgramB] Smack start. Orientation={boardOrientation}, GravityDir=D{gravityDir}");
@@ -388,6 +414,8 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         _resolver.ExecuteSmack(boardOrientation, SmackRules.Default, result =>
         {
             _isResolving = false;
+            if (result.ScoreGained > 0)
+                hudView?.AddScore(result.ScoreGained);
             SyncSpawnedPieceViews();
             RemoveDeadViewEntries();
             RefreshPreview();
@@ -460,6 +488,20 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         _previewObjects.Clear();
     }
 
+    private void EnsureComboPulse()
+    {
+        if (comboPulse != null) return;
+
+        if (boardEdgeGlow != null)
+            comboPulse = boardEdgeGlow.GetComponent<BoardHexPulseEffect>();
+
+        if (comboPulse == null && boardEdgeGlow != null)
+            comboPulse = boardEdgeGlow.gameObject.AddComponent<BoardHexPulseEffect>();
+
+        if (comboPulse == null)
+            comboPulse = GetComponentInChildren<BoardHexPulseEffect>();
+    }
+
     /// <summary>把 Split 生成的子棋子（ExecuteSpawn 创建、但未注册进 _pieceViews 的）补注册进来。</summary>
     private void SyncSpawnedPieceViews()
     {
@@ -521,6 +563,211 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         var x = Mathf.Sqrt(3f) * (hex.q + hex.r * 0.5f) * CellSize;
         var y = -1.5f * hex.r * CellSize;
         return new Vector2(x, y);
+    }
+
+    // ── 鼠标悬浮棋子名称提示 ────────────────────────────────────
+
+    private static readonly Dictionary<PieceType, string> PieceDisplayNames = new Dictionary<PieceType, string>
+    {
+        { PieceType.Normal,    "普通棋" },
+        { PieceType.Score,     "得分棋" },
+        { PieceType.Explosion, "爆炸棋" },
+        { PieceType.Split,     "分裂棋" },
+        { PieceType.Bounce,    "弹跳棋" },
+        { PieceType.Stomach,   "胃袋棋" },
+        { PieceType.Devour,    "吞噬棋" },
+        { PieceType.Turn,      "转向棋" },
+        { PieceType.Swap,      "交换棋" },
+        { PieceType.Whirlwind, "旋风棋" },
+    };
+
+    private void EnsureHoverTooltip()
+    {
+        if (pieceTooltip != null && IsSceneInstance(pieceTooltip))
+        {
+            pieceTooltip.transform.SetAsLastSibling();
+            pieceTooltip.Hide();
+            return;
+        }
+
+        var tooltipPrefab = pieceTooltip;
+        var existingTooltips = FindObjectsByType<PieceTooltip>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        foreach (var candidate in existingTooltips)
+        {
+            if (candidate != null && IsSceneInstance(candidate))
+            {
+                pieceTooltip = candidate;
+                pieceTooltip.transform.SetAsLastSibling();
+                pieceTooltip.Hide();
+                return;
+            }
+        }
+
+        var canvas = FindFirstObjectByType<Canvas>();
+        if (canvas == null)
+        {
+            Debug.LogWarning("[ZZNC.TempProgramB] No Canvas found, hover tooltip disabled.");
+            return;
+        }
+
+        if (tooltipPrefab == null)
+        {
+            pieceTooltip = PieceTooltip.CreateRuntime(canvas);
+            return;
+        }
+
+        pieceTooltip = Instantiate(tooltipPrefab, canvas.transform);
+        pieceTooltip.name = tooltipPrefab.name.Trim() + "_Instance";
+        pieceTooltip.transform.SetAsLastSibling();
+        if (pieceTooltip.transform is RectTransform rect)
+        {
+            rect.localScale = Vector3.one;
+            rect.anchoredPosition = Vector2.zero;
+        }
+        pieceTooltip.Hide();
+    }
+
+    private static bool IsSceneInstance(Component component)
+    {
+        return component != null && component.gameObject.scene.IsValid() && component.gameObject.scene.isLoaded;
+    }
+
+    private static string GetPieceTitle(PieceType type) => type switch
+    {
+        PieceType.Normal => "普通棋",
+        PieceType.Score => "得分棋",
+        PieceType.Explosion => "爆炸棋",
+        PieceType.Split => "分裂棋",
+        PieceType.Bounce => "弹跳棋",
+        PieceType.Stomach => "胃袋棋",
+        PieceType.Devour => "吞噬棋",
+        PieceType.Turn => "转向棋",
+        PieceType.Swap => "交换棋",
+        PieceType.Whirlwind => "旋风棋",
+        _ => "棋子",
+    };
+
+    private static string GetPieceDescription(PieceType type) => type switch
+    {
+        PieceType.Normal => "基础棋子，沿重力方向移动并参与碰撞。",
+        PieceType.Score => "碰撞触发得分。",
+        PieceType.Explosion => "碰撞后向周围推开棋子。",
+        PieceType.Split => "碰撞后尝试生成新的棋子。",
+        PieceType.Bounce => "碰撞后反向弹跳。",
+        PieceType.Stomach => "吞入前方棋子并保留在棋盘内。",
+        PieceType.Devour => "吞噬目标棋子。",
+        PieceType.Turn => "碰撞后改变移动方向。",
+        PieceType.Swap => "与目标棋子交换位置。",
+        PieceType.Whirlwind => "影响周围一圈棋子的站位。",
+        _ => null,
+    };
+
+    private void UpdateHoverTooltip()
+    {
+        if (pieceTooltip == null)
+        {
+            EnsureHoverTooltip();
+            if (pieceTooltip == null) return;
+        }
+
+        var cam = Camera.main;
+        if (cam == null)
+        {
+            pieceTooltip.Hide();
+            ClearHoveredCell();
+            return;
+        }
+
+        // 屏幕坐标 → 世界坐标 → 棋盘本地坐标
+        var worldPos = cam.ScreenToWorldPoint(new Vector3(Input.mousePosition.x, Input.mousePosition.y, -cam.transform.position.z));
+        var local = transform.InverseTransformPoint(worldPos);
+
+        // 世界坐标逆推 Hex（HexToLocal 的代数逆）
+        // x = sqrt(3) * (q + r/2) * CellSize
+        // y = -1.5 * r * CellSize
+        float rf = local.y / (-1.5f * CellSize);
+        float qf = local.x / (Mathf.Sqrt(3f) * CellSize) - rf * 0.5f;
+        var hex = HexRound(qf, rf);
+
+        if (!_board.IsInside(hex))
+        {
+            ClearHoveredCell();
+            pieceTooltip.Hide();
+            return;
+        }
+
+        SetHoveredCell(hex);
+
+        var content = _board.GetContent(hex);
+        if (content == CellContent.Empty)
+        {
+            pieceTooltip.Hide();
+            return;
+        }
+
+        if (Time.unscaledTime - _hoveredHexSince < tooltipHoverDelay)
+        {
+            pieceTooltip.Hide();
+            return;
+        }
+
+        if (content == CellContent.Piece)
+        {
+            var piece = _board.GetPiece(hex);
+            if (piece != null)
+            {
+                pieceTooltip.Show(GetPieceTitle(piece.Type), GetPieceDescription(piece.Type));
+                return;
+            }
+        }
+
+        if (content == CellContent.Wall)
+        {
+            pieceTooltip.Show("墙体", "阻挡棋子移动和生成。");
+            return;
+        }
+
+    }
+
+    private void SetHoveredCell(Hex hex)
+    {
+        if (_hoveredHex.HasValue && _hoveredHex.Value.Equals(hex) && _hoveredCellRenderer != null)
+            return;
+
+        ClearHoveredCell();
+
+        if (!_cellObjects.TryGetValue(hex, out var cellObject) || cellObject == null)
+            return;
+
+        _hoveredCellRenderer = cellObject.GetComponent<SpriteRenderer>();
+        if (_hoveredCellRenderer == null)
+            return;
+
+        _hoveredHex = hex;
+        _hoveredHexSince = Time.unscaledTime;
+        _hoveredCellBaseColor = _hoveredCellRenderer.color;
+        _hoveredCellRenderer.color = Color.Lerp(_hoveredCellBaseColor, HoverCellTint, 0.45f);
+    }
+
+    private void ClearHoveredCell()
+    {
+        if (_hoveredCellRenderer != null)
+            _hoveredCellRenderer.color = _hoveredCellBaseColor;
+
+        _hoveredHex = null;
+        _hoveredCellRenderer = null;
+        _hoveredHexSince = 0f;
+    }
+
+    // 六边形坐标取整（cube coordinates round）
+    private static Hex HexRound(float q, float r)
+    {
+        float s = -q - r;
+        int rq = Mathf.RoundToInt(q), rr = Mathf.RoundToInt(r), rs = Mathf.RoundToInt(s);
+        float dq = Mathf.Abs(rq - q), dr = Mathf.Abs(rr - r), ds = Mathf.Abs(rs - s);
+        if (dq > dr && dq > ds) rq = -rr - rs;
+        else if (dr > ds)       rr = -rq - rs;
+        return new Hex(rq, rr);
     }
 
     private static void ClearChildren(Transform root)
