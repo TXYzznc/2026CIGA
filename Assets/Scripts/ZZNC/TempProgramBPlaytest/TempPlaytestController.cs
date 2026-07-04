@@ -59,6 +59,10 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     [SerializeField] private List<PieceEntry> pieces = new List<PieceEntry>();
     [SerializeField] private List<WallEntry> walls = new List<WallEntry>();
 
+    [Header("=== 特效 ===")]
+    [SerializeField] private SmackImpactVFX impactVFX;
+    [SerializeField] private HUDView hudView;
+
     [Header("Runtime Info（只读）")]
     [SerializeField] private int boardOrientation;
 
@@ -81,7 +85,17 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
             _resolver = gameObject.AddComponent<SmackResolver>();
 
         _resolver.Init(_board, this, this, this);
+
+        if (hudView != null)
+            hudView.OnSmackClicked += OnSmackRequest;
+
         BuildLayout();
+    }
+
+    private void OnDestroy()
+    {
+        if (hudView != null)
+            hudView.OnSmackClicked -= OnSmackRequest;
     }
 
     private void Update()
@@ -101,9 +115,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         }
 
         if (Input.GetKeyDown(KeyCode.Space))
-        {
-            ExecuteCurrentSmack();
-        }
+            OnSmackRequest();
 
         if (Input.GetKeyDown(KeyCode.Q))
         {
@@ -243,6 +255,14 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         PieceType.Whirlwind  => spriteWhirlwind,
         _                    => spriteNormal,
     };
+
+    // 空格键和按钮点击共用的入口，含防重入检查
+    private void OnSmackRequest()
+    {
+        if (_isResolving) return;
+        impactVFX?.PlaySmackImpact(HexToWorld(new Hex(0, 0)));
+        ExecuteCurrentSmack();
+    }
 
     private void ExecuteCurrentSmack()
     {

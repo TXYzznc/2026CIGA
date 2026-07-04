@@ -6,8 +6,6 @@ using System.Text;
 /// </summary>
 public static class NumText
 {
-    private const string AssetName = "ZZNC_NumSpriteAsset";
-
     private static readonly StringBuilder Sb = new StringBuilder(64);
 
     /// <summary>整数 → sprite 标签串（如 320 → 三个标签）。</summary>
@@ -23,7 +21,7 @@ public static class NumText
         foreach (char c in text)
         {
             if (c >= '0' && c <= '9')
-                Sb.Append("<sprite=\"").Append(AssetName).Append("\" name=\"").Append(c).Append("\">");
+                Sb.Append("<sprite name=\"").Append(c).Append("\">");
             else
                 Sb.Append(c);
         }
