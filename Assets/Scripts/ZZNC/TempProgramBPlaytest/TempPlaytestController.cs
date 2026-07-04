@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 
 [System.Serializable]
 public struct PieceEntry
@@ -115,6 +116,13 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     private Board.Snapshot _snapshot;
     private SpriteMask _boardMask;
 
+    private bool _isChoicePanelOpen;
+    private int _smackCount;
+    private Transform _choiceRoot;
+    private GameObject _choiceMask;
+    private int _choicePoolTotalWeight;
+    private readonly List<PieceType> _choiceSeed = new List<PieceType>();
+
     private static readonly Color HoverCellTint = new Color(1f, 0.92f, 0.55f, 1f);
     private const int HexMaskTextureSize = 1024;
     private const float HexMaskAlphaCutoff = 0.2f;
@@ -156,6 +164,14 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         {
             // 结算期间持续把流光速度归零，让 SmoothDamp 正常淡出
             boardEdgeGlow?.SetSpeed(0f);
+            pieceTooltip?.Hide();
+            ClearHoveredCell();
+            return;
+        }
+
+        // 选择面板打开时禁用键盘输入
+        if (_isChoicePanelOpen)
+        {
             pieceTooltip?.Hide();
             ClearHoveredCell();
             return;
@@ -318,6 +334,191 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         return go.transform;
     }
 
+    // ── 结算后三选一 / 三选三 ───────────────────────────────────
+
+    /// <summary>对外接口：触发一次普通三选一。</summary>
+    public void ShowChoicePanelOnce(Action<PieceType> onChosen = null)
+        => ShowChoicePanel(1, onChosen);
+
+    /// <summary>对外接口：触发三次三选一（每次选完随机放棋盘，共三次）。</summary>
+    public void ShowChoicePanelThreeTimes(Action<List<PieceType>> onChosen = null)
+    {
+        var allChosen = new List<PieceType>();
+        ShowChoicePanel(3, type =>
+        {
+            allChosen.Add(type);
+            if (allChosen.Count >= 3)
+                onChosen?.Invoke(allChosen);
+        });
+    }
+
+    private void ShowChoicePanel(int times, Action<PieceType> onChosen = null)
+    {
+        HideChoicePanel();
+        _isChoicePanelOpen = true;
+
+        var empties = _board.EmptyCells();
+        if (empties.Count == 0) return;
+
+        var canvas = GetComponentInParent<Canvas>();
+        if (canvas == null)
+        {
+            canvas = FindFirstObjectByType<Canvas>();
+            if (canvas == null) return;
+        }
+
+        // 先创建遮罩（在下面），再创建面板（在上面）
+        var mask = new GameObject("ChoiceMask", typeof(RectTransform), typeof(Image));
+        mask.transform.SetParent(canvas.transform, false);
+        var maskTransform = (RectTransform)mask.transform;
+        maskTransform.anchorMin = Vector2.zero;
+        maskTransform.anchorMax = Vector2.one;
+        maskTransform.offsetMin = Vector2.zero;
+        maskTransform.offsetMax = Vector2.zero;
+        var maskImg = mask.GetComponent<Image>();
+        maskImg.color = new Color(0f, 0f, 0f, 0.4f);
+        maskImg.raycastTarget = true;
+        var maskBtn = mask.AddComponent<Button>();
+        maskBtn.onClick.AddListener(HideChoicePanel);
+        _choiceMask = mask;
+
+        // 选择面板在遮罩之上
+        var root = new GameObject("ChoicePanel", typeof(RectTransform));
+        root.transform.SetParent(canvas.transform, false);
+        root.transform.SetAsLastSibling();
+        _choiceRoot = root.transform;
+
+        var rootRect = (RectTransform)root.transform;
+        rootRect.anchorMin = new Vector2(0.5f, 0f);
+        rootRect.anchorMax = new Vector2(0.5f, 0.5f);
+        rootRect.pivot = new Vector2(0.5f, 0.5f);
+        rootRect.anchoredPosition = Vector2.zero;
+        rootRect.sizeDelta = new Vector2(700f, 280f);
+
+        // 权重累加 & 初始化种子
+        if (_choicePoolTotalWeight == 0 && pieceWeights.Count > 0)
+        {
+            _choicePoolTotalWeight = 0;
+            _choiceSeed.Clear();
+            for (int i = 0; i < pieceWeights.Count; i++)
+            {
+                int w = Mathf.Max(1, pieceWeights[i].weight);
+                _choicePoolTotalWeight += w;
+                _choiceSeed.Add(pieceWeights[i].type);
+            }
+        }
+
+        // 随机选3种不同的棋子
+        var chosen = new List<PieceType>();
+        var tempList = new List<PieceType>(_choiceSeed);
+        var rng = new System.Random();
+        for (int i = 0; i < 3 && tempList.Count > 0; i++)
+        {
+            int idx = rng.Next(tempList.Count);
+            chosen.Add(tempList[idx]);
+            tempList.RemoveAt(idx);
+        }
+
+        // 显示剩余选择次数（三选三模式）
+        if (times > 1)
+        {
+            var labelGo = new GameObject("RemainingLabel", typeof(TextMeshProUGUI));
+            labelGo.transform.SetParent(rootRect, false);
+            var labelRect = labelGo.GetComponent<RectTransform>();
+            labelRect.anchorMin = new Vector2(0.5f, 1f);
+            labelRect.anchorMax = new Vector2(0.5f, 1f);
+            labelRect.pivot = new Vector2(0.5f, 1f);
+            labelRect.anchoredPosition = new Vector2(0f, -15f);
+            var labelText = labelGo.GetComponent<TextMeshProUGUI>();
+            labelText.text = $"第 {4 - times}/3 次选择";
+            labelText.fontSize = 28f;
+            labelText.alignment = TextAlignmentOptions.Center;
+            labelText.color = Color.white;
+        }
+
+        float spacing = 250f;
+        float startX = -(chosen.Count - 1) * spacing * 0.5f;
+        for (int i = 0; i < chosen.Count; i++)
+        {
+            var type = chosen[i];
+            int captured = i;
+            int nextTimes = times - 1;
+            var btnGo = new GameObject($"Btn_{type}", typeof(Image));
+            btnGo.transform.SetParent(rootRect, false);
+            var btnRect = btnGo.GetComponent<RectTransform>();
+            btnRect.sizeDelta = new Vector2(200f, 200f);
+            btnRect.anchoredPosition = new Vector2(startX + i * spacing, 0f);
+
+            var img = btnGo.GetComponent<Image>();
+            img.sprite = GetPieceSprite(type);
+            img.preserveAspect = true;
+            img.raycastTarget = true;
+
+            var btn = btnGo.AddComponent<Button>();
+            btn.targetGraphic = img;
+            btn.onClick.AddListener(() =>
+            {
+                var chosenType = chosen[captured];
+                onChosen?.Invoke(chosenType);
+                PlaceChosenPiece(chosenType);
+                HideChoicePanel();
+                if (nextTimes > 0)
+                    ShowChoicePanel(nextTimes, onChosen);
+            });
+        }
+
+        // 跳过按钮
+        var skipGo = new GameObject("Btn_Skip", typeof(Image));
+        skipGo.transform.SetParent(rootRect, false);
+        var skipRect = skipGo.GetComponent<RectTransform>();
+        skipRect.sizeDelta = new Vector2(280f, 70f);
+        skipRect.anchoredPosition = new Vector2(0f, -130f);
+
+        var skipImg = skipGo.GetComponent<Image>();
+        skipImg.color = new Color(0.2f, 0.2f, 0.2f, 0.8f);
+        skipImg.raycastTarget = true;
+
+        var skipTmp = new GameObject("SkipText", typeof(TextMeshProUGUI));
+        skipTmp.transform.SetParent(skipGo.transform, false);
+        var skipTmpRect = skipTmp.GetComponent<RectTransform>();
+        skipTmpRect.anchorMin = Vector2.zero;
+        skipTmpRect.anchorMax = Vector2.one;
+        skipTmpRect.offsetMin = Vector2.zero;
+        skipTmpRect.offsetMax = Vector2.zero;
+        var skipText = skipTmp.GetComponent<TextMeshProUGUI>();
+        skipText.text = "跳过";
+        skipText.fontSize = 32f;
+        skipText.alignment = TextAlignmentOptions.Center;
+        skipText.color = Color.white;
+
+        var skipBtn = skipGo.AddComponent<Button>();
+        skipBtn.targetGraphic = skipImg;
+        skipBtn.onClick.AddListener(HideChoicePanel);
+    }
+
+    private void HideChoicePanel()
+    {
+        _isChoicePanelOpen = false;
+        if (_choiceRoot != null) DestroyImmediate(_choiceRoot.gameObject);
+        _choiceRoot = null;
+        if (_choiceMask != null) DestroyImmediate(_choiceMask);
+        _choiceMask = null;
+    }
+
+    private void PlaceChosenPiece(PieceType type)
+    {
+        var empties = _board.EmptyCells();
+        if (empties.Count == 0) return;
+        var rng = new System.Random();
+        var pos = empties[rng.Next(empties.Count)];
+        var piece = new Piece { Type = type };
+        var view = CreatePieceView(type, pos);
+        piece.View = view;
+        _board.PlacePiece(piece, pos);
+        _pieceViews[piece] = view;
+        RefreshPreview();
+    }
+
     private void BuildLayout()
     {
         _isResolving = false;
@@ -477,11 +678,14 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         _resolver.ExecuteSmack(boardOrientation, SmackRules.Default, result =>
         {
             _isResolving = false;
-            if (result.ScoreGained > 0)
-                hudView?.AddScore(result.ScoreGained);
             SyncSpawnedPieceViews();
             RemoveDeadViewEntries();
             RefreshPreview();
+            _smackCount++;
+            if (_smackCount % 5 == 0)
+                ShowChoicePanel(3);
+            else
+                ShowChoicePanel(1);
             Debug.Log($"[ZZNC.TempProgramB] Smack stable. Score={result.ScoreGained}, Overflow={result.EventOverflow}");
         });
     }
