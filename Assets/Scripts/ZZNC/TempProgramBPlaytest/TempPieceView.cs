@@ -7,8 +7,8 @@ using UnityEngine;
 /// </summary>
 public class TempPieceView : MonoBehaviour, IPieceView
 {
-    private const float MoveDuration = 0.18f;
-    private const float FxDuration = 0.14f;
+    [SerializeField] public float MoveDuration = 0.18f;
+    [SerializeField] public float FxDuration = 0.14f;
     private SpriteRenderer _renderer;
     private Coroutine _motion;
     private Vector3 _baseScale;
@@ -35,6 +35,7 @@ public class TempPieceView : MonoBehaviour, IPieceView
             _motion = null;
         }
         transform.position = worldPos;
+        transform.localScale = _baseScale; // 恢复基准大小，防止中断的动画遗留了缩放
     }
 
     public float MoveTo(Vector3 worldPos)

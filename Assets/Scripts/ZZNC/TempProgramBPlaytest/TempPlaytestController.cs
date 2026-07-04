@@ -22,9 +22,20 @@ public struct WallEntry
 /// </summary>
 public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFactory, IHUDView
 {
-    private const float CellSize = 1.45f;
     private const float PieceZ = -0.05f;
-    private const int BoardRadius = 3;
+
+    /// <summary>根据棋盘半径等比缩放格子大小，使总宽度≈10.15单位保持不变。</summary>
+    private float CellSize => 1.45f * 7f / (2 * boardRadius + 1);
+
+    /// <summary>视觉缩放系数（以 radius=3 为基准）。</summary>
+    private float LayoutScale => 7f / (2 * boardRadius + 1);
+
+    [Header("=== 棋盘参数 ===")]
+    [SerializeField, Range(1, 10)] private int boardRadius = 3;
+
+    [Header("=== 动画速度 ===")]
+    [SerializeField, Range(0.1f, 0.5f)] private float moveDuration = 0.18f;
+    [SerializeField, Range(0.1f, 0.5f)] private float fxDuration = 0.14f;
 
     [Header("=== 棋盘 Prefab（拖一次）===")]
     [SerializeField] private GameObject hexCellPrefab;
@@ -164,7 +175,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         _cellObjects.Clear();
         _pieceViews.Clear();
         _board.Clear();
-        _board.SetShape(MakeHexagonShape(BoardRadius));
+        _board.SetShape(MakeHexagonShape(boardRadius));
 
         var wallSet = new HashSet<Hex>();
         foreach (var w in walls)
@@ -179,6 +190,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
             var isWall = wallSet.Contains(cell);
             var prefab = isWall ? hexWallPrefab : hexCellPrefab;
             var obj = Instantiate(prefab, HexToWorld(cell), Quaternion.identity, _cellsRoot);
+            obj.transform.localScale = Vector3.one * LayoutScale;
             obj.name = isWall ? $"Wall_{cell.q}_{cell.r}" : $"Cell_{cell.q}_{cell.r}";
             _cellObjects[cell] = obj;
         }
@@ -208,9 +220,11 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         var go = new GameObject($"Piece_{type}_{pos.q}_{pos.r}");
         go.transform.SetParent(_piecesRoot);
         go.transform.position = HexToWorld(pos) + new Vector3(0f, 0f, PieceZ);
-        go.transform.localScale = Vector3.one * 0.78f;
+        go.transform.localScale = Vector3.one * 0.78f * LayoutScale;
 
         var view = go.AddComponent<TempPieceView>();
+        view.MoveDuration = moveDuration;
+        view.FxDuration = fxDuration;
         view.Init(GetPieceSprite(type), pieceMaterial, 2);
         return view;
     }
@@ -358,7 +372,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         }
     }
 
-    private static Vector2 HexToLocal(Hex hex)
+    private Vector2 HexToLocal(Hex hex)
     {
         var x = Mathf.Sqrt(3f) * (hex.q + hex.r * 0.5f) * CellSize;
         var y = -1.5f * hex.r * CellSize;

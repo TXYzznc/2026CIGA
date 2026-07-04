@@ -23,7 +23,6 @@ namespace TotemWarrior.EditorTools
             importer.alphaIsTransparency = true;
             importer.mipmapEnabled = false;
             importer.filterMode = FilterMode.Bilinear;
-            importer.spritePixelsPerUnit = 100f;
             importer.textureCompression = TextureImporterCompression.Compressed;
 
             var settings = new TextureImporterPlatformSettings
