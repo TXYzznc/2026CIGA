@@ -15,11 +15,6 @@ public class RotationPreviewRenderer : MonoBehaviour
     [SerializeField] private Color ghostColor = new Color(0.45f, 0.82f, 1f, 0.38f);
     [SerializeField, Range(0.5f, 1.5f)] private float ghostScaleMultiplier = 1f;
 
-    [Header("路径虚线点")]
-    [SerializeField] private Color trailColor = new Color(0.6f, 0.9f, 1f, 0.55f);
-    [SerializeField, Range(0.1f, 0.6f)] private float trailDotScale = 0.28f;
-    [SerializeField, Range(1, 5)] private int trailDotCount = 3;
-
     [Header("碰撞目标描边")]
     [SerializeField] private Color hitRingColor = new Color(1f, 0.52f, 0.08f, 0.55f);
     [SerializeField, Range(1f, 2.5f)] private float hitRingScale = 1.45f;
@@ -75,20 +70,12 @@ public class RotationPreviewRenderer : MonoBehaviour
             // 原地不动的棋子不显示预览
             if (fromPos == finalPos) continue;
 
-            Vector3 fromWorld = hexToWorld(fromPos);
             Vector3 toWorld = hexToWorld(finalPos);
 
             // ── 1. Ghost 棋子（落点半透明精灵）────────────────────
             var ghost = CreateGhost(getSprite(piece.Type), toWorld);
             if (ghost != null) _objects.Add(ghost);
 
-            // ── 2. 路径虚线点 ─────────────────────────────────────
-            for (int i = 1; i <= trailDotCount; i++)
-            {
-                float t = i / (float)(trailDotCount + 1);
-                var dot = CreateTrailDot(Vector3.Lerp(fromWorld, toWorld, t));
-                if (dot != null) _objects.Add(dot);
-            }
         }
 
         // ── 3. 碰撞目标橙色光圈 ───────────────────────────────────
@@ -126,20 +113,6 @@ public class RotationPreviewRenderer : MonoBehaviour
         sr.sprite = sprite;
         sr.color = ghostColor;
         sr.sortingOrder = 1;
-        return go;
-    }
-
-    private GameObject CreateTrailDot(Vector3 worldPos)
-    {
-        if (_dotPrefab == null) return null;
-
-        var go = Instantiate(_dotPrefab, worldPos + new Vector3(0f, 0f, -0.09f), Quaternion.identity, _root);
-        go.name = "Preview_Trail";
-        go.transform.localScale = Vector3.one * trailDotScale;
-
-        if (go.TryGetComponent<SpriteRenderer>(out var sr))
-            sr.color = trailColor;
-
         return go;
     }
 
