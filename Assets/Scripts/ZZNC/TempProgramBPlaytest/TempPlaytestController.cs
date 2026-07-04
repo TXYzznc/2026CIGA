@@ -102,6 +102,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     [SerializeField] private bool placeGameplayCanvasBehindBoard = true;
     [SerializeField, Min(0.01f)] private float gameplayCanvasBehindBoardOffset = 5f;
     [SerializeField] private int modalCanvasSortingOrder = 1000;
+    [SerializeField, Min(0f)] private float choicePopupDelay = 1f;
 
     [Header("Runtime Info（只读）")]
     [SerializeField] private int boardOrientation;
@@ -421,8 +422,14 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         if (!placeGameplayCanvasBehindBoard)
             return;
 
-        var gameplayCanvas = FindFirstObjectByType<Canvas>();
-        if (gameplayCanvas == null || gameplayCanvas.renderMode != RenderMode.ScreenSpaceOverlay)
+        var gameplayCanvas = hudView != null
+            ? hudView.GetComponentInParent<Canvas>(true)
+            : null;
+        if (gameplayCanvas == null)
+            return;
+
+        var modalCanvas = GameObject.Find("ZZNCModalOverlayCanvas");
+        if (modalCanvas != null && gameplayCanvas.gameObject == modalCanvas)
             return;
 
         var cam = Camera.main != null ? Camera.main : FindFirstObjectByType<Camera>();
@@ -444,7 +451,8 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
 
         MoveViewToCanvas(mainMenuView, modalCanvas.transform);
         MoveViewToCanvas(settlementView, modalCanvas.transform);
-        MoveViewToCanvas(pieceTooltip, modalCanvas.transform);
+        if (pieceTooltip != null && IsSceneInstance(pieceTooltip))
+            MoveViewToCanvas(pieceTooltip, modalCanvas.transform);
     }
 
     private Canvas EnsureRuntimeOverlayCanvas()
@@ -454,7 +462,12 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
 
         var existing = GameObject.Find("ZZNCModalOverlayCanvas");
         if (existing != null && existing.TryGetComponent(out _runtimeOverlayCanvas))
+        {
+            _runtimeOverlayCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            _runtimeOverlayCanvas.overrideSorting = true;
+            _runtimeOverlayCanvas.sortingOrder = modalCanvasSortingOrder;
             return _runtimeOverlayCanvas;
+        }
 
         var go = new GameObject("ZZNCModalOverlayCanvas", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
         _runtimeOverlayCanvas = go.GetComponent<Canvas>();
@@ -542,12 +555,6 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         var maskImg = mask.GetComponent<Image>();
         maskImg.color = new Color(0f, 0f, 0f, 0.4f);
         maskImg.raycastTarget = true;
-        var maskBtn = mask.AddComponent<Button>();
-        maskBtn.onClick.AddListener(() =>
-        {
-            HideChoicePanel();
-            onFinished?.Invoke();
-        });
         _choiceMask = mask;
 
         var root = new GameObject("ChoicePanel", typeof(RectTransform));
@@ -563,6 +570,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         rootRect.sizeDelta = new Vector2(700f, 280f);
 
         RefreshChoiceSeed();
+        Debug.Log($"[ZZNC.Flow] Fallback choice panel opened. timesLeft={times}, emptyCells={_board.EmptyCells().Count}, seed={_choiceSeed.Count}");
 
         var chosen = new List<PieceType>();
         var tempList = new List<PieceType>(_choiceSeed);
@@ -710,6 +718,9 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
 
     private void BuildLayout(bool useConfiguredInitialPieces = false)
     {
+        if (!ValidateBoardPrefabReferences())
+            return;
+
         _isResolving = false;
         pieceTooltip?.Hide();
         ClearHoveredCell();
@@ -827,6 +838,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     {
         settlementView?.Hide();
         mainMenuView?.Hide();
+        SetGameplayContentVisible(true);
         _gameActive = true;
         _waitingForChoice = false;
         currentLevelId = levelId;
@@ -896,7 +908,32 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         hudView?.SetRemainingSmacks(0, 0);
         settlementView?.Hide();
         mainMenuView?.Show();
+        SetGameplayContentVisible(false);
         ClearPreview();
+    }
+
+    private void SetGameplayContentVisible(bool visible)
+    {
+        if (hudView != null)
+            hudView.gameObject.SetActive(visible);
+        if (_cellsRoot != null)
+            _cellsRoot.gameObject.SetActive(visible);
+        if (_piecesRoot != null)
+            _piecesRoot.gameObject.SetActive(visible);
+        if (_effectsRoot != null)
+            _effectsRoot.gameObject.SetActive(visible);
+        if (boardEdgeGlow != null)
+            boardEdgeGlow.gameObject.SetActive(visible);
+        if (previewRenderer != null)
+            previewRenderer.gameObject.SetActive(visible);
+
+        if (!visible)
+        {
+            HideChoicePanel();
+            pieceTooltip?.Hide();
+            ClearHoveredCell();
+            boardEdgeGlow?.SetSpeed(0f);
+        }
     }
 
     private static int MaxRowLengthToBoardRadius(int maxRowLength)
@@ -983,6 +1020,9 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         _waitingForChoice = true;
         hudView?.SetSmackButtonInteractable(false);
 
+        if (choicePopupDelay > 0f)
+            yield return new WaitForSeconds(choicePopupDelay);
+
         for (int i = 0; i < count; i++)
         {
             if (_board.EmptyCells().Count == 0)
@@ -1026,6 +1066,12 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
 
     private void AddWallsAfterRound(int count)
     {
+        if (hexWallPrefab == null)
+        {
+            Debug.LogError("[ZZNC.TempProgramB] hexWallPrefab is not assigned on TempPlaytestController.");
+            return;
+        }
+
         for (int i = 0; i < count; i++)
         {
             var candidates = new List<Hex>();
@@ -1054,10 +1100,26 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         RemoveDeadViewEntries();
     }
 
+    private bool ValidateBoardPrefabReferences()
+    {
+        if (hexCellPrefab != null && hexWallPrefab != null)
+            return true;
+
+        if (hexCellPrefab == null)
+            Debug.LogError("[ZZNC.TempProgramB] hexCellPrefab is not assigned on TempPlaytestController.");
+        if (hexWallPrefab == null)
+            Debug.LogError("[ZZNC.TempProgramB] hexWallPrefab is not assigned on TempPlaytestController.");
+
+        return false;
+    }
+
     private void ShowLevelFail()
     {
         _gameActive = false;
+        _waitingForChoice = false;
+        HideChoicePanel();
         hudView?.SetSmackButtonInteractable(false);
+        Debug.Log($"[ZZNC.Flow] Level failed. level={currentLevelId}, round={currentRoundIndex}, score={currentScore}, target={_currentRound?.targetScore ?? 0}");
         settlementView?.Show("Failed", currentScore, $"Level {currentLevelId}  Round {currentRoundIndex}");
         settlementView?.SetButtonVisibility(false, true, true);
     }
@@ -1065,8 +1127,11 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     private void ShowLevelSuccess()
     {
         _gameActive = false;
+        _waitingForChoice = false;
+        HideChoicePanel();
         hudView?.SetSmackButtonInteractable(false);
         bool isFinal = currentLevelId >= FinalLevelId;
+        Debug.Log($"[ZZNC.Flow] Level success. level={currentLevelId}, score={currentScore}, final={isFinal}");
         settlementView?.Show(isFinal ? "Game Clear" : $"Level {currentLevelId} Clear", currentScore, isFinal ? "All levels completed." : "Choose next level or return.");
         settlementView?.SetNextInteractable(!isFinal);
         settlementView?.SetButtonVisibility(!isFinal, false, true);
@@ -1120,8 +1185,8 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
             SyncSpawnedPieceViews();
             RemoveDeadViewEntries();
             RefreshPreview();
-            OnSmackStable();
             Debug.Log($"[ZZNC.TempProgramB] Smack stable. Score={result.ScoreGained}, Overflow={result.EventOverflow}");
+            OnSmackStable();
         });
     }
 
@@ -1132,6 +1197,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
 
         if (remainingSmacks > 0)
         {
+            Debug.Log($"[ZZNC.Flow] Smack resolved. Opening normal choice. remainingSmacks={remainingSmacks}");
             StartCoroutine(RunChoiceSequence(1, RefreshPreview));
             return;
         }
@@ -1160,6 +1226,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
 
         StartCoroutine(RunChoiceSequence(3, () =>
         {
+            Debug.Log($"[ZZNC.Flow] Round passed. Adding walls and starting next round. level={currentLevelId}, round={currentRoundIndex}, addWalls={_currentRound.addWallCountOnPass}");
             AddWallsAfterRound(_currentRound.addWallCountOnPass);
             StartRound(currentRoundIndex, false);
         }));
