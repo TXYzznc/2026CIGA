@@ -12,6 +12,13 @@ public struct PieceEntry
     public int r;
 }
 
+[System.Serializable]
+public struct PieceWeight
+{
+    public PieceType type;
+    public int weight;
+}
+
 /// <summary>
 /// 在 Inspector 里拖 Sprite + 配棋子列表，运行时按 Tab 键热重载布局。
 /// </summary>
@@ -58,7 +65,22 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     [SerializeField] private Sprite spriteSwap;
     [SerializeField] private Sprite spriteWhirlwind;
 
-    [Header("=== 当前布局（只添加棋子；墙体由边缘裁切自动生成）===")]
+    [Header("=== 棋子生成 ===")]
+    [SerializeField] private bool randomizePieces = true;
+    [SerializeField, Range(0, 100)] private int initialPieceCount = 20;
+    [SerializeField] private List<PieceWeight> pieceWeights = new List<PieceWeight>
+    {
+        new PieceWeight { type = PieceType.Normal,    weight = 20 },
+        new PieceWeight { type = PieceType.Score,     weight = 20 },
+        new PieceWeight { type = PieceType.Explosion, weight = 10 },
+        new PieceWeight { type = PieceType.Split,     weight = 5  },
+        new PieceWeight { type = PieceType.Bounce,    weight = 20 },
+        new PieceWeight { type = PieceType.Stomach,   weight = 10 },
+        new PieceWeight { type = PieceType.Devour,    weight = 15 },
+        new PieceWeight { type = PieceType.Turn,      weight = 20 },
+        new PieceWeight { type = PieceType.Swap,      weight = 20 },
+        new PieceWeight { type = PieceType.Whirlwind, weight = 10 },
+    };
     [SerializeField] private List<PieceEntry> pieces = new List<PieceEntry>();
 
     [Header("=== 特效 ===")]
@@ -334,19 +356,53 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
             _cellObjects[cell] = obj;
         }
 
-        foreach (var pe in pieces)
+        if (randomizePieces && pieceWeights.Count > 0)
         {
-            var pos = new Hex(pe.q, pe.r);
-            if (_board.GetContent(pos) != CellContent.Empty)
+            var emptyCells = _board.EmptyCells();
+            int count = Mathf.Min(initialPieceCount, emptyCells.Count);
+            var rng = new System.Random();
+            // 构建权重累加数组
+            int totalWeight = 0;
+            var cumul = new int[pieceWeights.Count];
+            for (int i = 0; i < pieceWeights.Count; i++)
             {
-                Debug.LogWarning($"[Layout] {pe.type} @ ({pe.q},{pe.r}) 被占用，跳过");
-                continue;
+                totalWeight += Mathf.Max(1, pieceWeights[i].weight);
+                cumul[i] = totalWeight;
             }
-            var piece = new Piece { Type = pe.type };
-            var view = CreatePieceView(pe.type, pos);
-            piece.View = view;
-            _board.PlacePiece(piece, pos);
-            _pieceViews[piece] = view;
+            for (int k = 0; k < count; k++)
+            {
+                // 在剩余空格中随机选一个位置
+                int idx = rng.Next(emptyCells.Count);
+                var pos = emptyCells[idx];
+                emptyCells.RemoveAt(idx);
+                // 按权重随机选棋子类型
+                int roll = rng.Next(totalWeight);
+                int ti = 0;
+                while (ti < cumul.Length - 1 && roll >= cumul[ti]) ti++;
+                var type = pieceWeights[ti].type;
+                var piece = new Piece { Type = type };
+                var view = CreatePieceView(type, pos);
+                piece.View = view;
+                _board.PlacePiece(piece, pos);
+                _pieceViews[piece] = view;
+            }
+        }
+        else
+        {
+            foreach (var pe in pieces)
+            {
+                var pos = new Hex(pe.q, pe.r);
+                if (_board.GetContent(pos) != CellContent.Empty)
+                {
+                    Debug.LogWarning($"[Layout] {pe.type} @ ({pe.q},{pe.r}) 被占用，跳过");
+                    continue;
+                }
+                var piece = new Piece { Type = pe.type };
+                var view = CreatePieceView(pe.type, pos);
+                piece.View = view;
+                _board.PlacePiece(piece, pos);
+                _pieceViews[piece] = view;
+            }
         }
 
         ApplyBoardRotation();
@@ -549,7 +605,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
             // 通过 piece.View 反查对应 piece
             Piece matched = null;
             foreach (var p in _board.AllPieces())
-            { if (p.View == view) { matched = p; break; } }
+            { if ((object)p.View == (object)view) { matched = p; break; } }
             if (matched == null)
             {
                 DestroyImmediate(child.gameObject);
