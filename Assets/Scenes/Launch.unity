@@ -1085,19 +1085,19 @@ MonoBehaviour:
   hexWallPrefab: {fileID: 2006094445100370757, guid: 72ac4dac52cb33243a7f84205434dc05, type: 3}
   previewDotPrefab: {fileID: 7560920155644563363, guid: dec6b5cbc6ad6dc4cb10fdd90cf20352, type: 3}
   pieceMaterial: {fileID: 2100000, guid: 50af45fa972329e488cc2507bf216be3, type: 2}
-  spriteNormal: {fileID: 21300000, guid: f11022f884aa88943a3d107bf281bf49, type: 3}
-  spriteScore: {fileID: 21300000, guid: a606f84ad831828488640590fa6328e4, type: 3}
-  spriteExplosion: {fileID: 21300000, guid: b4632587b00bbc4499cdbb0cbd947844, type: 3}
-  spriteSplit: {fileID: 21300000, guid: 8323b3e5aaefa5d4a91ba75013676fb4, type: 3}
-  spriteBounce: {fileID: 21300000, guid: fd26ac916c4dd6e46a4917efc24ec2c1, type: 3}
-  spriteStomach: {fileID: 21300000, guid: 3a24fb06f96b5c74fa5ae985a5950d8c, type: 3}
-  spriteDevour: {fileID: 21300000, guid: 49690fcc8299bdd46a6e4a049af662ea, type: 3}
-  spriteTurn: {fileID: 21300000, guid: 40b819ca8374e5f4d8dcb982ec4e2437, type: 3}
-  spriteSwap: {fileID: 21300000, guid: 226df7b74bf712842b6c63d1d6fc77fc, type: 3}
-  spriteWhirlwind: {fileID: 21300000, guid: 305301ef1b4fa754791a1930c5a843a9, type: 3}
+  spriteNormal: {fileID: 21300000, guid: 3f15274d4f120bf44ac8d86398180353, type: 3}
+  spriteScore: {fileID: 21300000, guid: deb819dd24612d94b868342069294d35, type: 3}
+  spriteExplosion: {fileID: 21300000, guid: 240850e927574a24280393d0813a9145, type: 3}
+  spriteSplit: {fileID: 21300000, guid: 7ce3120ada2b79a42bc4aa5e3718d0c3, type: 3}
+  spriteBounce: {fileID: 21300000, guid: 7af8ab61ada39c6418040a67154e54a3, type: 3}
+  spriteStomach: {fileID: 21300000, guid: f6d9b9a07db880f48951925183b35ce0, type: 3}
+  spriteDevour: {fileID: 21300000, guid: 079a6130a1266fe4d986a60e0ed6d8a8, type: 3}
+  spriteTurn: {fileID: 21300000, guid: 0fd9084606bd20949956b2cec55ba646, type: 3}
+  spriteSwap: {fileID: 21300000, guid: 46af4d0d96735da4eb5d2b4e79d83960, type: 3}
+  spriteWhirlwind: {fileID: 21300000, guid: 3e48b5561cbd6a5479c9341d62dc2492, type: 3}
   pieces:
   - type: 0
-    q: 0
+    q: 2
     r: 0
   - type: 1
     q: 0
@@ -1127,8 +1127,8 @@ MonoBehaviour:
     q: -1
     r: -2
   walls:
-  - q: -1
-    r: -1
+  - q: 0
+    r: 0
   impactVFX: {fileID: 542262501}
   hudView: {fileID: 757728756}
   boardEdgeGlow: {fileID: 0}

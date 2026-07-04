@@ -193,33 +193,63 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
 
     public void ShowScorePop(int scoreDelta, int combo, Vector3 worldPos)
     {
+        // 每次弹出都实时累加到总分
+        hudView?.AddScore(scoreDelta);
+        float shake = 0.1f + combo * 0.015f;
+        hudView?.ShakeScore(shake);
+
         var go = new GameObject($"ScorePopup_{scoreDelta}");
-        go.transform.position = worldPos + new Vector3(0f, 0f, -0.5f); // 抬高到棋盘上方
-        go.transform.localScale = Vector3.one * 0.8f;
+        go.transform.position = worldPos + new Vector3(0f, 0f, -0.5f);
 
         var tmp = go.AddComponent<TextMeshPro>();
-        tmp.text = $"+{scoreDelta}";
+        tmp.text = NumText.ToSpriteTags(scoreDelta);
         tmp.fontSize = 8f;
         tmp.alignment = TextAlignmentOptions.Center;
-        tmp.color = Color.yellow;
+        tmp.color = Color.white;
         tmp.fontStyle = FontStyles.Bold;
+        var spriteAsset = Resources.Load<TMP_SpriteAsset>("Font/ZZNC_NumSpriteAsset");
+        if (spriteAsset != null) tmp.spriteAsset = spriteAsset;
         var mr = go.GetComponent<MeshRenderer>();
         if (mr != null) mr.sortingOrder = 100;
 
-        StartCoroutine(AnimateScorePopup(go, tmp));
+        float baseScale = 0.6f + combo * 0.15f;
+        float springKick = 5f + combo * combo * 0.05f;
+
+        StartCoroutine(AnimateScorePopup(go, tmp, baseScale, springKick, combo));
     }
 
-    private IEnumerator AnimateScorePopup(GameObject go, TMP_Text tmp)
+    private IEnumerator AnimateScorePopup(GameObject go, TMP_Text tmp, float baseScale, float springKick, int combo)
     {
         var startPos = go.transform.position;
-        for (var t = 0f; t < 0.6f; t += Time.deltaTime)
+        float scale = 0.02f;
+        float velocity = -springKick * 0.3f; // 先往小缩再爆开
+        float angle = 0f;
+        float duration = Mathf.Min(0.5f, 0.2f + combo * 0.003f);
+
+        for (var t = 0f; t < duration; t += Time.deltaTime)
         {
-            var k = t / 0.6f;
-            go.transform.position = startPos + new Vector3(0f, 0.5f * k, 0f);
-            tmp.color = new Color(1f, 1f, 0f, 1f - k * 0.3f);
+            float dt = Time.deltaTime;
+            float displacement = baseScale - scale;
+            velocity += displacement * 200f * dt;
+            velocity *= Mathf.Exp(-5f * dt);
+            scale += velocity * dt;
+
+            // 弹簧振荡时轻微左右旋转
+            float rot = (scale - baseScale) * 15f;
+            angle = Mathf.Lerp(angle, rot, dt * 12f);
+
+            go.transform.localScale = Vector3.one * Mathf.Max(0.01f, scale);
+            go.transform.localRotation = Quaternion.Euler(0f, 0f, angle);
+            go.transform.position = startPos + new Vector3(0f, 0.8f * (t / duration), 0f);
+
+            // 先白→黄
+            float yellowT = Mathf.Clamp01(t / 0.12f);
+            tmp.color = Color.Lerp(Color.white, Color.yellow, yellowT);
             yield return null;
         }
-        Destroy(go);
+
+        go.transform.localRotation = Quaternion.identity;
+        Destroy(go, 0.1f);
     }
 
     private void EnsureRoots()
@@ -358,12 +388,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         _resolver.ExecuteSmack(boardOrientation, SmackRules.Default, result =>
         {
             _isResolving = false;
-<<<<<<< HEAD
-            if (result.ScoreGained > 0)
-                hudView?.AddScore(result.ScoreGained);
-=======
             SyncSpawnedPieceViews();
->>>>>>> f1aec1424f329eb072d8a23f0d5346e7aa2401f5
             RemoveDeadViewEntries();
             RefreshPreview();
             Debug.Log($"[ZZNC.TempProgramB] Smack stable. Score={result.ScoreGained}, Overflow={result.EventOverflow}");
@@ -447,20 +472,34 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
 
     private void RemoveDeadViewEntries()
     {
+        // 方法A：从 _pieceViews 字典清理
         var dead = new List<Piece>();
         foreach (var kv in _pieceViews)
         {
             if (_board.GetPieceById(kv.Key.ID) == null)
-            {
                 dead.Add(kv.Key);
-            }
         }
-
         foreach (var piece in dead)
         {
             if (_pieceViews.TryGetValue(piece, out var deadView) && deadView != null)
-                Destroy(deadView.gameObject);
+                DestroyImmediate(deadView.gameObject);
             _pieceViews.Remove(piece);
+        }
+
+        // 方法B：暴力扫描 _piecesRoot 下所有子物体，棋盘上不存在的强制销毁
+        for (int i = _piecesRoot.childCount - 1; i >= 0; i--)
+        {
+            var child = _piecesRoot.GetChild(i);
+            var view = child.GetComponent<TempPieceView>();
+            if (view == null) continue;
+            // 通过 piece.View 反查对应 piece
+            Piece matched = null;
+            foreach (var p in _board.AllPieces())
+            { if (p.View == view) { matched = p; break; } }
+            if (matched == null)
+            {
+                DestroyImmediate(child.gameObject);
+            }
         }
     }
 
