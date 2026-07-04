@@ -5,7 +5,7 @@ using UnityEngine;
 /// Temporary visual adapter for Program-B playtest replacement.
 /// Delete the whole TempProgramBPlaytest folder when the real Program-B view layer is ready.
 /// </summary>
-public class ZZNCTempProgramBPieceView : MonoBehaviour, IPieceView
+public class TempPieceView : MonoBehaviour, IPieceView
 {
     private const float MoveDuration = 0.18f;
     private const float FxDuration = 0.14f;

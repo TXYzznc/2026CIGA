@@ -1,7 +1,7 @@
 using UnityEditor;
 using UnityEngine;
 
-public static class ZZNCTempProgramBPlaytestInstaller
+public static class TempPlaytestInstaller
 {
     [MenuItem("Tools/ZZNC/Install Temp Program-B Playtest")]
     public static void Install()
@@ -19,7 +19,7 @@ public static class ZZNCTempProgramBPlaytestInstaller
         }
 
         var root = new GameObject("ZZNCTempProgramBPlaytest");
-        var controller = root.AddComponent<ZZNCTempProgramBPlaytestController>();
+        var controller = root.AddComponent<TempPlaytestController>();
         root.AddComponent<SmackResolver>();
 
         Assign(controller, "hexCellPrefab", Load<GameObject>("Assets/Prefabs/ZZNC/ZZNC_HexCell.prefab"));

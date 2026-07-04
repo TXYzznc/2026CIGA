@@ -20,7 +20,7 @@ public struct WallEntry
 /// <summary>
 /// 在 Inspector 里拖 Sprite + 配棋子列表，运行时按 Tab 键热重载布局。
 /// </summary>
-public class ZZNCTempProgramBPlaytestController : MonoBehaviour, IBoardView, IPieceViewFactory, IHUDView
+public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFactory, IHUDView
 {
     private const float CellSize = 1.45f;
     private const float PieceZ = -0.05f;
@@ -53,7 +53,7 @@ public class ZZNCTempProgramBPlaytestController : MonoBehaviour, IBoardView, IPi
 
     private readonly Board _board = new Board();
     private readonly Dictionary<Hex, GameObject> _cellObjects = new Dictionary<Hex, GameObject>();
-    private readonly Dictionary<Piece, ZZNCTempProgramBPieceView> _pieceViews = new Dictionary<Piece, ZZNCTempProgramBPieceView>();
+    private readonly Dictionary<Piece, TempPieceView> _pieceViews = new Dictionary<Piece, TempPieceView>();
     private readonly List<GameObject> _previewObjects = new List<GameObject>();
     private Transform _cellsRoot;
     private Transform _piecesRoot;
@@ -203,14 +203,14 @@ public class ZZNCTempProgramBPlaytestController : MonoBehaviour, IBoardView, IPi
         Debug.Log($"[Layout] 已加载 {pieces.Count} 枚棋子, {walls.Count} 面墙. 空格=拍击, Q=撤销, Tab=重载布局");
     }
 
-    private ZZNCTempProgramBPieceView CreatePieceView(PieceType type, Hex pos)
+    private TempPieceView CreatePieceView(PieceType type, Hex pos)
     {
         var go = new GameObject($"Piece_{type}_{pos.q}_{pos.r}");
         go.transform.SetParent(_piecesRoot);
         go.transform.position = HexToWorld(pos) + new Vector3(0f, 0f, PieceZ);
         go.transform.localScale = Vector3.one * 0.78f;
 
-        var view = go.AddComponent<ZZNCTempProgramBPieceView>();
+        var view = go.AddComponent<TempPieceView>();
         view.Init(GetPieceSprite(type), pieceMaterial, 2);
         return view;
     }
