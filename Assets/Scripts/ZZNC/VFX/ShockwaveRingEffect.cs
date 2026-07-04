@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using DG.Tweening;
 using UnityEngine;
 
@@ -13,6 +14,8 @@ using UnityEngine;
 public class ShockwaveRingEffect : MonoBehaviour
 {
     private const int Segments = 64;
+
+    private readonly List<Material> _ownedMaterials = new List<Material>();
 
     private Color _color;
     private float _endRadius;
@@ -64,8 +67,15 @@ public class ShockwaveRingEffect : MonoBehaviour
         SpawnSparks();
         SpawnDebris();
 
-        // 整体销毁（等最长动画结束）
-        DOVirtual.DelayedCall(_duration + 0.35f, () => { if (this != null) Destroy(gameObject); });
+        // 整体销毁：先手动释放动态材质，再销毁 GO
+        DOVirtual.DelayedCall(_duration + 0.35f, () =>
+        {
+            if (this == null) return;
+            foreach (var mat in _ownedMaterials)
+                if (mat != null) Destroy(mat);
+            _ownedMaterials.Clear();
+            Destroy(gameObject);
+        });
     }
 
     // -------------------------------------------------------
@@ -83,7 +93,9 @@ public class ShockwaveRingEffect : MonoBehaviour
         lr.endWidth      = lineWidth;
         lr.startColor    = new Color(color.r, color.g, color.b, 0f); // 延迟前隐藏
         lr.endColor      = new Color(color.r, color.g, color.b, 0f);
-        lr.material      = new Material(Shader.Find("Sprites/Default")) { hideFlags = HideFlags.HideAndDontSave };
+        var mat = new Material(Shader.Find("Sprites/Default"));
+        _ownedMaterials.Add(mat);
+        lr.material = mat;
         lr.sortingOrder  = 20;
 
         const float startRadius = 0.15f;
@@ -169,7 +181,9 @@ public class ShockwaveRingEffect : MonoBehaviour
         col.color = new ParticleSystem.MinMaxGradient(grad);
 
         var r = ps.GetComponent<ParticleSystemRenderer>();
-        r.material     = new Material(Shader.Find("Sprites/Default")) { hideFlags = HideFlags.HideAndDontSave };
+        var sparkMat = new Material(Shader.Find("Sprites/Default"));
+        _ownedMaterials.Add(sparkMat);
+        r.material     = sparkMat;
         r.sortingOrder = 21;
 
         ps.Emit(40);
@@ -226,7 +240,9 @@ public class ShockwaveRingEffect : MonoBehaviour
         col.color = new ParticleSystem.MinMaxGradient(grad);
 
         var r = ps.GetComponent<ParticleSystemRenderer>();
-        r.material     = new Material(Shader.Find("Sprites/Default")) { hideFlags = HideFlags.HideAndDontSave };
+        var debrisMat = new Material(Shader.Find("Sprites/Default"));
+        _ownedMaterials.Add(debrisMat);
+        r.material     = debrisMat;
         r.sortingOrder = 19;
 
         ps.Emit(18);
