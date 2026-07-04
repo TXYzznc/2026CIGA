@@ -52,6 +52,7 @@ public class GameEvent
     public IPieceView RemovedView;
     public Piece SpawnedPiece;
     public Hex ScoreOriginPos;
+    public Vector3 ScoreWorldPos;
 
     // 胃袋/吞噬计数
     public int ConsumeCount;

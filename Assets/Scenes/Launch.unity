@@ -392,7 +392,7 @@ MonoBehaviour:
     bottomLeft: {r: 1, g: 1, b: 1, a: 1}
     bottomRight: {r: 1, g: 1, b: 1, a: 1}
   m_fontColorGradientPreset: {fileID: 0}
-  m_spriteAsset: {fileID: 11400000, guid: 4b68019d8f87568479b8186c849c39f3, type: 2}
+  m_spriteAsset: {fileID: 11400000, guid: 5a1552b49927f8d40bde35218fabf887, type: 2}
   m_tintAllSprites: 0
   m_StyleSheet: {fileID: 0}
   m_TextStyleHashCode: -1183493901
@@ -1131,6 +1131,8 @@ MonoBehaviour:
     r: -1
   impactVFX: {fileID: 542262501}
   hudView: {fileID: 757728756}
+  boardEdgeGlow: {fileID: 0}
+  previewRenderer: {fileID: 0}
   boardOrientation: 0
 --- !u!4 &635942666
 Transform:
@@ -2948,7 +2950,7 @@ MonoBehaviour:
     bottomLeft: {r: 1, g: 1, b: 1, a: 1}
     bottomRight: {r: 1, g: 1, b: 1, a: 1}
   m_fontColorGradientPreset: {fileID: 0}
-  m_spriteAsset: {fileID: 11400000, guid: 4b68019d8f87568479b8186c849c39f3, type: 2}
+  m_spriteAsset: {fileID: 11400000, guid: 5a1552b49927f8d40bde35218fabf887, type: 2}
   m_tintAllSprites: 0
   m_StyleSheet: {fileID: 0}
   m_TextStyleHashCode: -1183493901

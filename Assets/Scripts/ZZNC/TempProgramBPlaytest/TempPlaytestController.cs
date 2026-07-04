@@ -1,5 +1,7 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 
 [System.Serializable]
@@ -186,7 +188,33 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
 
     public void ShowScorePop(int scoreDelta, int combo, Vector3 worldPos)
     {
-        Debug.Log($"[ZZNC.TempProgramB] Score +{scoreDelta}, Combo {combo}, At {worldPos}");
+        var go = new GameObject($"ScorePopup_{scoreDelta}");
+        go.transform.position = worldPos + new Vector3(0f, 0f, -0.5f); // 抬高到棋盘上方
+        go.transform.localScale = Vector3.one * 0.8f;
+
+        var tmp = go.AddComponent<TextMeshPro>();
+        tmp.text = $"+{scoreDelta}";
+        tmp.fontSize = 8f;
+        tmp.alignment = TextAlignmentOptions.Center;
+        tmp.color = Color.yellow;
+        tmp.fontStyle = FontStyles.Bold;
+        var mr = go.GetComponent<MeshRenderer>();
+        if (mr != null) mr.sortingOrder = 100;
+
+        StartCoroutine(AnimateScorePopup(go, tmp));
+    }
+
+    private IEnumerator AnimateScorePopup(GameObject go, TMP_Text tmp)
+    {
+        var startPos = go.transform.position;
+        for (var t = 0f; t < 0.6f; t += Time.deltaTime)
+        {
+            var k = t / 0.6f;
+            go.transform.position = startPos + new Vector3(0f, 0.5f * k, 0f);
+            tmp.color = new Color(1f, 1f, 0f, 1f - k * 0.3f);
+            yield return null;
+        }
+        Destroy(go);
     }
 
     private void EnsureRoots()
@@ -325,6 +353,8 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         _resolver.ExecuteSmack(boardOrientation, SmackRules.Default, result =>
         {
             _isResolving = false;
+            if (result.ScoreGained > 0)
+                hudView?.AddScore(result.ScoreGained);
             RemoveDeadViewEntries();
             RefreshPreview();
             Debug.Log($"[ZZNC.TempProgramB] Smack stable. Score={result.ScoreGained}, Overflow={result.EventOverflow}");

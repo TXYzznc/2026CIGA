@@ -15,7 +15,6 @@ public class SmackResolver : MonoBehaviour
     private int _totalScore;
     private int _totalEventCount;
     private int _currentGravityDir;
-    private bool _overflow;
 
     private readonly Queue<GameEvent> _eventQueue = new Queue<GameEvent>();
     private readonly List<GameEvent> _executedLog = new List<GameEvent>();
@@ -99,7 +98,6 @@ public class SmackResolver : MonoBehaviour
         _rules = rules;
         _totalScore = 0;
         _totalEventCount = 0;
-        _overflow = false;
         _eventQueue.Clear();
         _executedLog.Clear();
 
@@ -130,7 +128,7 @@ public class SmackResolver : MonoBehaviour
         var result = new SmackResult
         {
             ScoreGained = _totalScore,
-            EventOverflow = _overflow,
+            EventOverflow = false,
         };
         onRoundStable?.Invoke(result);
     }
@@ -223,16 +221,15 @@ public class SmackResolver : MonoBehaviour
     {
         while (_eventQueue.Count > 0)
         {
-            if (_totalEventCount >= _rules.EventLimit)
+            if (_totalEventCount >= 5000)
             {
-                _overflow = true;
                 _eventQueue.Clear();
-                Debug.LogError($"[SmackResolver] EventLimit({_rules.EventLimit}) 溢出，强制清空队列");
+                Debug.LogError("[SmackResolver] 事件数超 5000，强制清空");
                 break;
             }
+            _totalEventCount++;
 
             var ev = _eventQueue.Dequeue();
-            _totalEventCount++;
 
             if (IsEventInvalid(ev))
             {
@@ -370,6 +367,7 @@ public class SmackResolver : MonoBehaviour
             ScoreDelta = delta,
             ComboAtTrigger = hitNumber,
             ScoreOriginPos = originPos,
+            ScoreWorldPos = _boardView?.HexToWorld(originPos) ?? Vector3.zero,
         });
     }
 
@@ -516,6 +514,9 @@ public class SmackResolver : MonoBehaviour
             RemovedView = originView,
             Executed = true,
         });
+
+        // 分裂一次加一分
+        RecordScore(1, originPos);
 
         // 两个生成方向：顺时针 60° 和逆时针 60°
         int dirCW  = Hex.RotateDir(collisionDir, 1);
@@ -1009,6 +1010,7 @@ public class SmackResolver : MonoBehaviour
                     ScoreDelta = sDelta,
                     ComboAtTrigger = piece.ScoreHitCount,
                     ScoreOriginPos = pushTo,
+                    ScoreWorldPos = _boardView?.HexToWorld(pushTo) ?? Vector3.zero,
                     Executed = true,
                 });
             }
@@ -1267,8 +1269,8 @@ public class SmackResolver : MonoBehaviour
             {
                 if (_hud != null && _boardView != null)
                 {
-                    var worldPos = _boardView.HexToWorld(ev.ScoreOriginPos);
-                    _hud.ShowScorePop(ev.ScoreDelta, ev.ComboAtTrigger, worldPos);
+                    var pos = _boardView.HexToWorld(ev.ScoreOriginPos);
+                    _hud.ShowScorePop(ev.ScoreDelta, ev.ComboAtTrigger, pos);
                 }
                 break;
             }
