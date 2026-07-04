@@ -94,6 +94,9 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     private SpriteMask _boardMask;
 
     private static readonly Color HoverCellTint = new Color(1f, 0.92f, 0.55f, 1f);
+    private const int HexMaskTextureSize = 1024;
+    private const float HexMaskAlphaCutoff = 0.2f;
+    private const float HexMaskAntialiasPixels = 1.5f;
 
     private void Awake()
     {
@@ -588,6 +591,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
             _boardMask = go.AddComponent<SpriteMask>();
             _boardMask.sprite = GetHexMaskSprite();
         }
+        _boardMask.alphaCutoff = HexMaskAlphaCutoff;
         // 本地坐标转 30° 变尖顶；棋盘根节点自带 ∓30°+k·60° 的重力对齐旋转，屏幕上恰好呈平顶
         var circumradius = 2f * OuterRadius * CellSize;
         _boardMask.transform.localPosition = Vector3.zero;
@@ -602,10 +606,12 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     {
         if (_hexMaskSprite != null) return _hexMaskSprite;
 
-        const int size = 256;
+        const int size = HexMaskTextureSize;
         const float circumR = size * 0.5f;
         var apothem = circumR * Mathf.Sqrt(3f) * 0.5f;
         var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        tex.filterMode = FilterMode.Bilinear;
+        tex.wrapMode = TextureWrapMode.Clamp;
         var pixels = new Color32[size * size];
         var half = size * 0.5f;
         for (var py = 0; py < size; py++)
@@ -615,16 +621,19 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
                 var x = px + 0.5f - half;
                 var y = py + 0.5f - half;
                 // 平顶六边形内含测试：三条对边轴上的投影都不超过边心距
-                var inside = Mathf.Abs(y) <= apothem
-                          && Mathf.Abs(Mathf.Sqrt(3f) * x + y) * 0.5f <= apothem
-                          && Mathf.Abs(Mathf.Sqrt(3f) * x - y) * 0.5f <= apothem;
-                pixels[py * size + px] = inside ? new Color32(255, 255, 255, 255) : new Color32(0, 0, 0, 0);
+                var d = apothem - Mathf.Max(
+                    Mathf.Abs(y),
+                    Mathf.Max(
+                        Mathf.Abs(Mathf.Sqrt(3f) * x + y) * 0.5f,
+                        Mathf.Abs(Mathf.Sqrt(3f) * x - y) * 0.5f));
+                var alpha = Mathf.Clamp01(HexMaskAlphaCutoff + d / HexMaskAntialiasPixels);
+                pixels[py * size + px] = new Color32(255, 255, 255, (byte)Mathf.RoundToInt(alpha * 255f));
             }
         }
         tex.SetPixels32(pixels);
         tex.Apply(false, true);
         _hexMaskSprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), circumR);
-        _hexMaskSprite.name = "BoardHexMask";
+        _hexMaskSprite.name = $"BoardHexMask_{size}";
         return _hexMaskSprite;
     }
 
