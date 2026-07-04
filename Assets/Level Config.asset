@@ -1,0 +1,35 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9bf77529824a95241a7691b83f684354, type: 3}
+  m_Name: Level Config
+  m_EditorClassIdentifier: 
+  boardRadius: 2
+  walls: []
+  boardLayoutJson: {fileID: 4900000, guid: a9f65c1d745552543882a0c5d4da86bc, type: 3}
+  initialPieceCount: 6
+  initialPiecePool:
+  - type: 0
+    weight: 6
+  - type: 1
+    weight: 3
+  choicePool:
+  - type: 0
+    weight: 5
+  - type: 1
+    weight: 3
+  - type: 2
+    weight: 1
+  targetScore: 50
+  smackCount: 5
+  eventLimit: 500
+  pieceTriggerLimit: 50
+  scorePieceBaseScore: 10
