@@ -36,7 +36,7 @@ public class ChromaticAberrationEffect : MonoBehaviour
     [ImageEffectOpaque]
     private void OnRenderImage(RenderTexture src, RenderTexture dst)
     {
-        if (_mat == null || _intensity < 0.0001f)
+        if (!_mat || _intensity < 0.0001f)   // !_mat 能正确检测 Unity 已销毁对象
         {
             Graphics.Blit(src, dst);
             return;
@@ -48,7 +48,7 @@ public class ChromaticAberrationEffect : MonoBehaviour
     /// <summary>触发一次色差脉冲：快速升到峰值，再缓慢归零。</summary>
     public void Pulse()
     {
-        if (_mat == null) return;
+        if (!_mat) return;
 
         _tween?.Kill();
         _intensity = 0f;

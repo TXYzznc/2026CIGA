@@ -116,7 +116,12 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
 
     private void Update()
     {
-        if (_isResolving) return;
+        if (_isResolving)
+        {
+            // 结算期间持续把流光速度归零，让 SmoothDamp 正常淡出
+            boardEdgeGlow?.SetSpeed(0f);
+            return;
+        }
 
         // Accept any number of rotations,累加到 _targetOrientation
         if (Input.GetKeyDown(KeyCode.A))
@@ -353,8 +358,12 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         _resolver.ExecuteSmack(boardOrientation, SmackRules.Default, result =>
         {
             _isResolving = false;
+<<<<<<< HEAD
             if (result.ScoreGained > 0)
                 hudView?.AddScore(result.ScoreGained);
+=======
+            SyncSpawnedPieceViews();
+>>>>>>> f1aec1424f329eb072d8a23f0d5346e7aa2401f5
             RemoveDeadViewEntries();
             RefreshPreview();
             Debug.Log($"[ZZNC.TempProgramB] Smack stable. Score={result.ScoreGained}, Overflow={result.EventOverflow}");
@@ -412,22 +421,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         var gravityDir = Hex.OrientationToGravityDir(boardOrientation);
         var preview = _resolver.SimulateSmack(boardOrientation);
 
-        if (previewRenderer != null)
-        {
-            previewRenderer.Refresh(preview, _board, gravityDir, HexToWorld, GetPieceSprite);
-        }
-        else if (previewDotPrefab != null)
-        {
-            // 无渲染器时退回原有落点 dot
-            foreach (var kv in preview.FinalPositions)
-            {
-                var piece = _board.GetPieceById(kv.Key);
-                if (piece == null || piece.Position == kv.Value) continue;
-                var dot = Instantiate(previewDotPrefab, HexToWorld(kv.Value) + new Vector3(0f, 0f, -0.1f), Quaternion.identity, _effectsRoot);
-                dot.name = $"Preview_{kv.Key}_{kv.Value.q}_{kv.Value.r}";
-                _previewObjects.Add(dot);
-            }
-        }
+        previewRenderer?.Refresh(preview, _board, gravityDir, HexToWorld, GetPieceSprite);
     }
 
     private void ClearPreview()
@@ -439,6 +433,16 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
             if (obj != null) Destroy(obj);
         }
         _previewObjects.Clear();
+    }
+
+    /// <summary>把 Split 生成的子棋子（ExecuteSpawn 创建、但未注册进 _pieceViews 的）补注册进来。</summary>
+    private void SyncSpawnedPieceViews()
+    {
+        foreach (var p in _board.AllPieces())
+        {
+            if (!_pieceViews.ContainsKey(p) && p.View is TempPieceView v)
+                _pieceViews[p] = v;
+        }
     }
 
     private void RemoveDeadViewEntries()
@@ -454,6 +458,8 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
 
         foreach (var piece in dead)
         {
+            if (_pieceViews.TryGetValue(piece, out var deadView) && deadView != null)
+                Destroy(deadView.gameObject);
             _pieceViews.Remove(piece);
         }
     }

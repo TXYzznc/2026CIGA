@@ -172,13 +172,15 @@ public class TempPieceView : MonoBehaviour, IPieceView
         sol.enabled = true;
         sol.size    = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.Linear(0f, 1f, 1f, 0f));
 
-        var r = ps.GetComponent<ParticleSystemRenderer>();
-        r.material     = new Material(Shader.Find("Sprites/Default")) { hideFlags = HideFlags.HideAndDontSave };
+        var mat = new Material(Shader.Find("Sprites/Default"));
+        var r   = ps.GetComponent<ParticleSystemRenderer>();
+        r.material     = mat;
         r.sortingOrder = 10;
 
         ps.Emit(10);
 
-        // 延迟销毁（等粒子寿命结束）
+        // 挂一个自清理组件：GO 销毁时同步销毁动态材质
+        go.AddComponent<MaterialAutoDestroy>().Track(mat);
         Object.Destroy(go, 0.6f);
     }
 
