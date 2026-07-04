@@ -1499,6 +1499,9 @@ MonoBehaviour:
   pieceTooltip: {fileID: 7985042429747471661, guid: 5c8e1e2dc500e0e48a3543a76d9a4ed5, type: 3}
   tooltipHoverDelay: 0.5
   comboPulse: {fileID: 1506002230}
+  placeGameplayCanvasBehindBoard: 1
+  gameplayCanvasBehindBoardOffset: 5
+  modalCanvasSortingOrder: 1000
   boardOrientation: 0
   currentLevelId: 1
   currentRoundIndex: 1
@@ -2763,7 +2766,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &1573108561
 RectTransform:
   m_ObjectHideFlags: 0
