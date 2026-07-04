@@ -64,6 +64,16 @@ public class SettlementView : MonoBehaviour
             nextButton.interactable = interactable;
     }
 
+    public void SetButtonVisibility(bool showNext, bool showRetry, bool showMainMenu)
+    {
+        if (nextButton != null)
+            nextButton.gameObject.SetActive(showNext);
+        if (retryButton != null)
+            retryButton.gameObject.SetActive(showRetry);
+        if (mainMenuButton != null)
+            mainMenuButton.gameObject.SetActive(showMainMenu);
+    }
+
     public void ClickNext()
     {
         onNextClicked?.Invoke();

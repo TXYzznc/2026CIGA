@@ -226,6 +226,13 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
             return;
         }
 
+        if (_isChoicePanelOpen)
+        {
+            pieceTooltip?.Hide();
+            ClearHoveredCell();
+            return;
+        }
+
         // Accept any number of rotations,累加到 _targetOrientation
         if (Input.GetKeyDown(KeyCode.A))
             RotateTarget(1);
@@ -401,6 +408,221 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         return go.transform;
     }
 
+    // Runtime fallback choice panel. The external popup can replace this through IThreeChoiceService.
+    public void ShowChoicePanelOnce(Action<PieceType> onChosen = null)
+        => ShowChoicePanel(1, onChosen);
+
+    public void ShowChoicePanelThreeTimes(Action<List<PieceType>> onChosen = null)
+    {
+        var allChosen = new List<PieceType>();
+        ShowChoicePanel(3, type =>
+        {
+            allChosen.Add(type);
+            if (allChosen.Count >= 3)
+                onChosen?.Invoke(allChosen);
+        });
+    }
+
+    private void ShowChoicePanel(int times, Action<PieceType> onChosen = null, Action onFinished = null)
+    {
+        HideChoicePanel();
+        _isChoicePanelOpen = true;
+
+        if (_board.EmptyCells().Count == 0)
+        {
+            HideChoicePanel();
+            onFinished?.Invoke();
+            return;
+        }
+
+        var canvas = GetComponentInParent<Canvas>();
+        if (canvas == null)
+        {
+            canvas = FindFirstObjectByType<Canvas>();
+            if (canvas == null)
+            {
+                HideChoicePanel();
+                onFinished?.Invoke();
+                return;
+            }
+        }
+
+        var mask = new GameObject("ChoiceMask", typeof(RectTransform), typeof(Image));
+        mask.transform.SetParent(canvas.transform, false);
+        var maskTransform = (RectTransform)mask.transform;
+        maskTransform.anchorMin = Vector2.zero;
+        maskTransform.anchorMax = Vector2.one;
+        maskTransform.offsetMin = Vector2.zero;
+        maskTransform.offsetMax = Vector2.zero;
+        var maskImg = mask.GetComponent<Image>();
+        maskImg.color = new Color(0f, 0f, 0f, 0.4f);
+        maskImg.raycastTarget = true;
+        var maskBtn = mask.AddComponent<Button>();
+        maskBtn.onClick.AddListener(() =>
+        {
+            HideChoicePanel();
+            onFinished?.Invoke();
+        });
+        _choiceMask = mask;
+
+        var root = new GameObject("ChoicePanel", typeof(RectTransform));
+        root.transform.SetParent(canvas.transform, false);
+        root.transform.SetAsLastSibling();
+        _choiceRoot = root.transform;
+
+        var rootRect = (RectTransform)root.transform;
+        rootRect.anchorMin = new Vector2(0.5f, 0f);
+        rootRect.anchorMax = new Vector2(0.5f, 0.5f);
+        rootRect.pivot = new Vector2(0.5f, 0.5f);
+        rootRect.anchoredPosition = Vector2.zero;
+        rootRect.sizeDelta = new Vector2(700f, 280f);
+
+        RefreshChoiceSeed();
+
+        var chosen = new List<PieceType>();
+        var tempList = new List<PieceType>(_choiceSeed);
+        var rng = new System.Random();
+        for (int i = 0; i < 3 && tempList.Count > 0; i++)
+        {
+            int idx = rng.Next(tempList.Count);
+            chosen.Add(tempList[idx]);
+            tempList.RemoveAt(idx);
+        }
+
+        if (times > 1)
+        {
+            var labelGo = new GameObject("RemainingLabel", typeof(TextMeshProUGUI));
+            labelGo.transform.SetParent(rootRect, false);
+            var labelRect = labelGo.GetComponent<RectTransform>();
+            labelRect.anchorMin = new Vector2(0.5f, 1f);
+            labelRect.anchorMax = new Vector2(0.5f, 1f);
+            labelRect.pivot = new Vector2(0.5f, 1f);
+            labelRect.anchoredPosition = new Vector2(0f, -15f);
+            var labelText = labelGo.GetComponent<TextMeshProUGUI>();
+            labelText.text = $"第 {4 - times}/3 次选择";
+            labelText.fontSize = 28f;
+            labelText.alignment = TextAlignmentOptions.Center;
+            labelText.color = Color.white;
+        }
+
+        float spacing = 250f;
+        float startX = -(chosen.Count - 1) * spacing * 0.5f;
+        for (int i = 0; i < chosen.Count; i++)
+        {
+            var type = chosen[i];
+            int captured = i;
+            int nextTimes = times - 1;
+            var btnGo = new GameObject($"Btn_{type}", typeof(Image));
+            btnGo.transform.SetParent(rootRect, false);
+            var btnRect = btnGo.GetComponent<RectTransform>();
+            btnRect.sizeDelta = new Vector2(200f, 200f);
+            btnRect.anchoredPosition = new Vector2(startX + i * spacing, 0f);
+
+            var img = btnGo.GetComponent<Image>();
+            img.sprite = GetPieceSprite(type);
+            img.preserveAspect = true;
+            img.raycastTarget = true;
+
+            var btn = btnGo.AddComponent<Button>();
+            btn.targetGraphic = img;
+            btn.onClick.AddListener(() =>
+            {
+                var chosenType = chosen[captured];
+                onChosen?.Invoke(chosenType);
+                PlaceChosenPiece(chosenType);
+                HideChoicePanel();
+                if (nextTimes > 0)
+                    ShowChoicePanel(nextTimes, onChosen, onFinished);
+                else
+                    onFinished?.Invoke();
+            });
+        }
+
+        var skipGo = new GameObject("Btn_Skip", typeof(Image));
+        skipGo.transform.SetParent(rootRect, false);
+        var skipRect = skipGo.GetComponent<RectTransform>();
+        skipRect.sizeDelta = new Vector2(280f, 70f);
+        skipRect.anchoredPosition = new Vector2(0f, -130f);
+
+        var skipImg = skipGo.GetComponent<Image>();
+        skipImg.color = new Color(0.2f, 0.2f, 0.2f, 0.8f);
+        skipImg.raycastTarget = true;
+
+        var skipTmp = new GameObject("SkipText", typeof(TextMeshProUGUI));
+        skipTmp.transform.SetParent(skipGo.transform, false);
+        var skipTmpRect = skipTmp.GetComponent<RectTransform>();
+        skipTmpRect.anchorMin = Vector2.zero;
+        skipTmpRect.anchorMax = Vector2.one;
+        skipTmpRect.offsetMin = Vector2.zero;
+        skipTmpRect.offsetMax = Vector2.zero;
+        var skipText = skipTmp.GetComponent<TextMeshProUGUI>();
+        skipText.text = "跳过";
+        skipText.fontSize = 32f;
+        skipText.alignment = TextAlignmentOptions.Center;
+        skipText.color = Color.white;
+
+        var skipBtn = skipGo.AddComponent<Button>();
+        skipBtn.targetGraphic = skipImg;
+        skipBtn.onClick.AddListener(() =>
+        {
+            HideChoicePanel();
+            onFinished?.Invoke();
+        });
+    }
+
+    private void HideChoicePanel()
+    {
+        _isChoicePanelOpen = false;
+        if (_choiceRoot != null) DestroyImmediate(_choiceRoot.gameObject);
+        _choiceRoot = null;
+        if (_choiceMask != null) DestroyImmediate(_choiceMask);
+        _choiceMask = null;
+    }
+
+    private void PlaceChosenPiece(PieceType type)
+    {
+        var empties = _board.EmptyCells();
+        if (empties.Count == 0) return;
+        var rng = new System.Random();
+        var pos = empties[rng.Next(empties.Count)];
+        PlaceRuntimePiece(type, pos);
+        RefreshPreview();
+    }
+
+    private void RefreshChoiceSeed()
+    {
+        _choicePoolTotalWeight = 0;
+        _choiceSeed.Clear();
+
+        var configuredPool = _levelConfig?.choicePool;
+        if (configuredPool != null && configuredPool.Length > 0)
+        {
+            foreach (var entry in configuredPool)
+            {
+                if (!Enum.TryParse(entry.pieceType, out PieceType type)) continue;
+                int weight = Mathf.Max(1, entry.weight);
+                _choicePoolTotalWeight += weight;
+                _choiceSeed.Add(type);
+            }
+        }
+
+        if (_choiceSeed.Count == 0)
+        {
+            foreach (var entry in pieceWeights)
+            {
+                int weight = Mathf.Max(1, entry.weight);
+                _choicePoolTotalWeight += weight;
+                _choiceSeed.Add(entry.type);
+            }
+        }
+
+        if (_choiceSeed.Count == 0)
+        {
+            foreach (PieceType type in Enum.GetValues(typeof(PieceType)))
+                _choiceSeed.Add(type);
+        }
+    }
+
     private void BuildLayout(bool useConfiguredInitialPieces = false)
     {
         _isResolving = false;
@@ -446,23 +668,41 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         {
             SpawnInitialRandomPieces(_currentRound != null ? _currentRound.initialPieceCount : 0);
         }
+        else if (randomizePieces && pieceWeights.Count > 0)
+        {
+            var emptyCells = _board.EmptyCells();
+            int count = Mathf.Min(initialPieceCount, emptyCells.Count);
+            var rng = new System.Random();
+            int totalWeight = 0;
+            var cumul = new int[pieceWeights.Count];
+            for (int i = 0; i < pieceWeights.Count; i++)
+            {
+                totalWeight += Mathf.Max(1, pieceWeights[i].weight);
+                cumul[i] = totalWeight;
+            }
+            for (int k = 0; k < count; k++)
+            {
+                int idx = rng.Next(emptyCells.Count);
+                var pos = emptyCells[idx];
+                emptyCells.RemoveAt(idx);
+                int roll = rng.Next(totalWeight);
+                int ti = 0;
+                while (ti < cumul.Length - 1 && roll >= cumul[ti]) ti++;
+                PlaceRuntimePiece(pieceWeights[ti].type, pos);
+            }
+        }
         else
         {
-        foreach (var pe in pieces)
-        {
-            var pos = new Hex(pe.q, pe.r);
-            if (_board.GetContent(pos) != CellContent.Empty)
+            foreach (var pe in pieces)
             {
-                Debug.LogWarning($"[Layout] {pe.type} @ ({pe.q},{pe.r}) 被占用，跳过");
-                continue;
+                var pos = new Hex(pe.q, pe.r);
+                if (_board.GetContent(pos) != CellContent.Empty)
+                {
+                    Debug.LogWarning($"[Layout] {pe.type} @ ({pe.q},{pe.r}) 被占用，跳过");
+                    continue;
+                }
+                PlaceRuntimePiece(pe.type, pos);
             }
-            var piece = new Piece { Type = pe.type };
-            var view = CreatePieceView(pe.type, pos);
-            piece.View = view;
-            _board.PlacePiece(piece, pos);
-            _pieceViews[piece] = view;
-        }
-
         }
 
         ApplyBoardRotation();
@@ -548,6 +788,12 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
 
     private void RestartCurrentLevel()
     {
+        StopAllCoroutines();
+        _resolver?.StopAllCoroutines();
+        HideChoicePanel();
+        _isResolving = false;
+        _waitingForChoice = false;
+        _snapshot = null;
         StartLevel(currentLevelId);
     }
 
@@ -670,7 +916,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
             if (_choiceService != null)
                 yield return StartCoroutine(_choiceService.TriggerChoice(request, r => { choiceResult = r; hasChoiceResult = true; finished = true; }));
             else
-                finished = true;
+                ShowChoicePanel(1, _ => { }, () => { finished = true; });
 
             while (!finished)
                 yield return null;
@@ -728,6 +974,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         _gameActive = false;
         hudView?.SetSmackButtonInteractable(false);
         settlementView?.Show("Failed", currentScore, $"Level {currentLevelId}  Round {currentRoundIndex}");
+        settlementView?.SetButtonVisibility(false, true, true);
     }
 
     private void ShowLevelSuccess()
@@ -737,6 +984,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         bool isFinal = currentLevelId >= FinalLevelId;
         settlementView?.Show(isFinal ? "Game Clear" : $"Level {currentLevelId} Clear", currentScore, isFinal ? "All levels completed." : "Choose next level or return.");
         settlementView?.SetNextInteractable(!isFinal);
+        settlementView?.SetButtonVisibility(!isFinal, false, true);
     }
 
     private Sprite GetPieceSprite(PieceType type) => type switch
