@@ -7,6 +7,9 @@ public static class TempPlaytestInstaller
     public static void Install()
     {
         var old = GameObject.Find("ZZNCTempProgramBPlaytest");
+        var oldController = old != null ? old.GetComponent<TempPlaytestController>() : null;
+        var hexCellPrefab = oldController != null ? GetObjectReference<GameObject>(oldController, "hexCellPrefab") : null;
+        var hexWallPrefab = oldController != null ? GetObjectReference<GameObject>(oldController, "hexWallPrefab") : null;
         if (old != null)
         {
             Object.DestroyImmediate(old);
@@ -22,8 +25,8 @@ public static class TempPlaytestInstaller
         var controller = root.AddComponent<TempPlaytestController>();
         root.AddComponent<SmackResolver>();
 
-        Assign(controller, "hexCellPrefab", Load<GameObject>("Assets/Prefabs/ZZNC/ZZNC_HexCell.prefab"));
-        Assign(controller, "hexWallPrefab", Load<GameObject>("Assets/Prefabs/ZZNC/ZZNC_HexWall.prefab"));
+        Assign(controller, "hexCellPrefab", hexCellPrefab);
+        Assign(controller, "hexWallPrefab", hexWallPrefab);
         Assign(controller, "previewDotPrefab", Load<GameObject>("Assets/Prefabs/ZZNC/ZZNC_PreviewDot.prefab"));
         Assign(controller, "normalPieceSprite", Load<Sprite>("Assets/Resources/Sprite/ZZNC/Piece_Normal.png"));
         Assign(controller, "scorePieceSprite", Load<Sprite>("Assets/Resources/Sprite/ZZNC/Piece_Score.png"));
@@ -56,6 +59,13 @@ public static class TempPlaytestInstaller
         }
 
         return asset;
+    }
+
+    private static T GetObjectReference<T>(Object target, string fieldName) where T : Object
+    {
+        var serializedObject = new SerializedObject(target);
+        var property = serializedObject.FindProperty(fieldName);
+        return property != null ? property.objectReferenceValue as T : null;
     }
 
     private static void Assign(Object target, string fieldName, Object value)

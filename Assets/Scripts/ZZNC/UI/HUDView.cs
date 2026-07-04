@@ -12,7 +12,6 @@ public class HUDView : MonoBehaviour
 {
     [SerializeField] private TMP_Text scoreText;
     [SerializeField] private TMP_Text targetScoreText;
-    [SerializeField] private TMP_Text curScoreText;
     [SerializeField] private TMP_Text smackCountText;
 
     [Header("拍击按钮")]
@@ -99,20 +98,13 @@ public class HUDView : MonoBehaviour
     public void SetTargetScore(int target)
     {
         if (targetScoreText != null)
-            targetScoreText.text = "/  " + NumText.ToSpriteTags(target);
+            targetScoreText.text = "/" + NumText.ToSpriteTags(target);
     }
 
     public void SetRemainingSmacks(int remaining, int total)
     {
-        SetCurScore(remaining);
-
         if (smackCountText != null)
-            smackCountText.text = $"{remaining}/{total}";
-    }
-
-    private void SetCurScore(int score)
-    {
-        SetNumberText(score, curScoreText, _displayedCurScore, v => _displayedCurScore = v, ref _curScoreRollTween);
+            smackCountText.text = $"{NumText.ToSpriteTags(remaining)}/{NumText.ToSpriteTags(total)}";
     }
 
     /// <summary>在当前显示分数基础上增加 delta，带动效。</summary>
