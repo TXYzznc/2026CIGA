@@ -775,6 +775,8 @@ MonoBehaviour:
   boardRadius: 5
   moveDuration: 0.2
   fxDuration: 0.14
+  springStiffness: 500
+  springDamping: 25
   hexCellPrefab: {fileID: 884512862989034056, guid: 46d6f918935eaac43b500c1e44305337, type: 3}
   hexWallPrefab: {fileID: 2006094445100370757, guid: 72ac4dac52cb33243a7f84205434dc05, type: 3}
   previewDotPrefab: {fileID: 7560920155644563363, guid: dec6b5cbc6ad6dc4cb10fdd90cf20352, type: 3}

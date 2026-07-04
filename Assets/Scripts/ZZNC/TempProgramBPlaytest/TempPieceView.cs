@@ -13,6 +13,11 @@ public class TempPieceView : MonoBehaviour, IPieceView
     private Coroutine _motion;
     private Vector3 _baseScale;
 
+    /// <summary>队列越长该值越大，动画幅度越夸张。由 SmackResolver 在每次拍击前设置。</summary>
+    public static float GlobalAmplitudeScale = 1f;
+    /// <summary>队列越长该值越大，协程动画实际速度越快。由 SmackResolver 设置。</summary>
+    public static float GlobalSpeedScale = 1f;
+
     public void Init(Sprite sprite, Material material, int sortingOrder)
     {
         _renderer = gameObject.GetComponent<SpriteRenderer>();
@@ -82,71 +87,69 @@ public class TempPieceView : MonoBehaviour, IPieceView
 
     private IEnumerator AnimateMove(Vector3 target)
     {
+        float dur = MoveDuration / GlobalSpeedScale;
         var start = transform.position;
-        for (var t = 0f; t < MoveDuration; t += Time.deltaTime)
+        for (var t = 0f; t < dur; t += Time.deltaTime)
         {
-            var k = Mathf.SmoothStep(0f, 1f, t / MoveDuration);
+            var k = Mathf.SmoothStep(0f, 1f, t / dur);
             transform.position = Vector3.Lerp(start, target, k);
             yield return null;
         }
-
         transform.position = target;
     }
 
     private IEnumerator AnimateShake()
     {
+        float dur = FxDuration / GlobalSpeedScale;
         var start = transform.localPosition;
-        for (var t = 0f; t < FxDuration; t += Time.deltaTime)
+        float amp = GlobalAmplitudeScale * GlobalAmplitudeScale;
+        for (var t = 0f; t < dur; t += Time.deltaTime)
         {
-            var phase = Mathf.Sin(t * 90f) * 0.08f * (1f - t / FxDuration);
+            var phase = Mathf.Sin(t * 90f) * 0.08f * amp * (1f - t / dur);
             transform.localPosition = start + new Vector3(phase, 0f, 0f);
             yield return null;
         }
-
         transform.localPosition = start;
     }
 
     private IEnumerator AnimatePulse()
     {
-        for (var t = 0f; t < FxDuration; t += Time.deltaTime)
+        float dur = FxDuration / GlobalSpeedScale;
+        float amp = GlobalAmplitudeScale * GlobalAmplitudeScale;
+        for (var t = 0f; t < dur; t += Time.deltaTime)
         {
-            var k = Mathf.Sin(t / FxDuration * Mathf.PI);
-            transform.localScale = _baseScale * (1f + k * 0.22f);
+            var k = Mathf.Sin(t / dur * Mathf.PI);
+            transform.localScale = _baseScale * (1f + k * 0.22f * amp);
             yield return null;
         }
-
         transform.localScale = _baseScale;
     }
 
     private IEnumerator AnimateSpawn()
     {
-        for (var t = 0f; t < FxDuration; t += Time.deltaTime)
+        float dur = FxDuration / GlobalSpeedScale;
+        for (var t = 0f; t < dur; t += Time.deltaTime)
         {
-            var k = Mathf.SmoothStep(0f, 1f, t / FxDuration);
+            var k = Mathf.SmoothStep(0f, 1f, t / dur);
             transform.localScale = _baseScale * k;
             yield return null;
         }
-
         transform.localScale = _baseScale;
     }
 
     private IEnumerator AnimateRemove()
     {
+        float dur = FxDuration / GlobalSpeedScale;
         var startColor = _renderer != null ? _renderer.color : Color.white;
-        for (var t = 0f; t < FxDuration; t += Time.deltaTime)
+        for (var t = 0f; t < dur; t += Time.deltaTime)
         {
-            var k = 1f - Mathf.SmoothStep(0f, 1f, t / FxDuration);
+            var k = 1f - Mathf.SmoothStep(0f, 1f, t / dur);
             transform.localScale = _baseScale * k;
             if (_renderer != null)
-            {
                 _renderer.color = new Color(startColor.r, startColor.g, startColor.b, startColor.a * k);
-            }
             yield return null;
         }
-
         if (_renderer != null)
-        {
             _renderer.color = Color.clear;
-        }
     }
 }

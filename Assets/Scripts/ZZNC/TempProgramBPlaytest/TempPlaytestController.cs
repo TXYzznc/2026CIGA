@@ -37,6 +37,10 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     [SerializeField, Range(0.1f, 0.5f)] private float moveDuration = 0.18f;
     [SerializeField, Range(0.1f, 0.5f)] private float fxDuration = 0.14f;
 
+    [Header("=== 旋转弹簧 ===")]
+    [SerializeField, Range(50, 500)] private float springStiffness = 250f;
+    [SerializeField, Range(1f, 30f)] private float springDamping = 15f;
+
     [Header("=== 棋盘 Prefab（拖一次）===")]
     [SerializeField] private GameObject hexCellPrefab;
     [SerializeField] private GameObject hexWallPrefab;
@@ -71,6 +75,9 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     private Transform _effectsRoot;
     private SmackResolver _resolver;
     private bool _isResolving;
+    private float _visualAngle;        // 当前视觉角度（弹簧驱动）
+    private float _springVelocity;     // 弹簧速度
+    private int _targetOrientation;    // 逻辑目标朝向
     private Board.Snapshot _snapshot;
 
     private void Awake()
@@ -81,6 +88,10 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
             _resolver = gameObject.AddComponent<SmackResolver>();
 
         _resolver.Init(_board, this, this, this);
+        _targetOrientation = boardOrientation;
+        var initGravDir = Hex.OrientationToGravityDir(_targetOrientation);
+        var initLocalGrav = HexToLocal(new Hex(0, 0).Neighbor(initGravDir));
+        _visualAngle = Vector2.SignedAngle(initLocalGrav, Vector2.down);
         BuildLayout();
     }
 
@@ -88,32 +99,47 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     {
         if (_isResolving) return;
 
+        // Accept any number of rotations,累加到 _targetOrientation
         if (Input.GetKeyDown(KeyCode.A))
-        {
-            boardOrientation = Hex.RotateDir(boardOrientation, 1);
-            ApplyBoardRotation();
-        }
-
+            RotateTarget(1);
         if (Input.GetKeyDown(KeyCode.D))
+            RotateTarget(-1);
+
+        // 弹簧模拟：反方向蓄力 → 加速 → 减速 → 过冲 → 回弹归位
+        var targetGravDir = Hex.OrientationToGravityDir(_targetOrientation);
+        var targetLocalGrav = HexToLocal(new Hex(0, 0).Neighbor(targetGravDir));
+        var targetAngle = Vector2.SignedAngle(targetLocalGrav, Vector2.down);
+
+        float dt = Time.deltaTime;
+        float displacement = Mathf.DeltaAngle(_visualAngle, targetAngle);
+        _springVelocity += displacement * springStiffness * dt;
+        _springVelocity *= Mathf.Exp(-springDamping * dt);
+        _visualAngle += _springVelocity * dt;
+
+        transform.rotation = Quaternion.Euler(0f, 0f, _visualAngle);
+
+        // 弹簧稳定后归位并刷新预览
+        if (Mathf.Abs(displacement) < 0.5f && Mathf.Abs(_springVelocity) < 1f)
         {
-            boardOrientation = Hex.RotateDir(boardOrientation, -1);
-            ApplyBoardRotation();
+            _visualAngle = targetAngle;
+            _springVelocity = 0f;
+            RefreshPreview();
         }
 
         if (Input.GetKeyDown(KeyCode.Space))
-        {
             ExecuteCurrentSmack();
-        }
-
         if (Input.GetKeyDown(KeyCode.Q))
-        {
             UndoLastSmack();
-        }
-
         if (Input.GetKeyDown(KeyCode.Tab))
-        {
             BuildLayout();
-        }
+    }
+
+    private void RotateTarget(int direction)
+    {
+        _targetOrientation = Hex.RotateDir(_targetOrientation, direction);
+        boardOrientation = _targetOrientation; // 立即更新重力方向，不等动画结束
+        // 反方向蓄力一脚，产生"先回拉再弹出"的物理感
+        _springVelocity -= direction * 10f;
     }
 
     public Vector3 HexToWorld(Hex hex)
@@ -248,6 +274,14 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     {
         // 保存快照（可在拍击过程中按 Q 回到此状态）
         _snapshot = _board.Capture();
+
+        // 拍击前把棋盘视觉一次拉到位（不让动画冻结在半路）
+        var snapGravDir = Hex.OrientationToGravityDir(_targetOrientation);
+        var snapLocalGrav = HexToLocal(new Hex(0, 0).Neighbor(snapGravDir));
+        _visualAngle = Vector2.SignedAngle(snapLocalGrav, Vector2.down);
+        _springVelocity = 0f;
+        transform.rotation = Quaternion.Euler(0f, 0f, _visualAngle);
+        boardOrientation = _targetOrientation;
 
         _isResolving = true;
         ClearPreview();
