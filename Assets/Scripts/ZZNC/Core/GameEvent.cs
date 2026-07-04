@@ -34,10 +34,12 @@ public class GameEvent
     // Score 事件
     public int ScoreDelta;
     public int ComboAtTrigger;
+    public int PopSerial; // 本回合累计弹窗序号，越大弹得越夸张
 
     // Spawn 事件
     public PieceType SpawnType;
     public Hex SpawnPos;
+    public float SpawnSpeedBoost = 1f; // 分列链深度加速倍率
 
     // 执行后记录（播放器用）
     public bool Executed;

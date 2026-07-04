@@ -100,6 +100,17 @@ public class HUDView : MonoBehaviour
         SetScore(_displayedScore + delta);
     }
 
+    /// <summary>弹的次数越多震得越猛（小丑牌风格），抖完恢复原始大小。</summary>
+    public void ShakeScore(float intensity)
+    {
+        if (scoreText != null)
+        {
+            scoreText.transform.DOKill();
+            scoreText.transform.localScale = Vector3.one;
+            scoreText.transform.DOPunchScale(Vector3.one * intensity, 0.3f, 3, 0.5f);
+        }
+    }
+
     /// <summary>不带动效直接刷新（初始化场景时用）。</summary>
     public void SetScoreImmediate(int score)
     {
