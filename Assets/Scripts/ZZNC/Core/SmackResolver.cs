@@ -15,7 +15,6 @@ public class SmackResolver : MonoBehaviour
     private int _totalScore;
     private int _totalEventCount;
     private int _currentGravityDir;
-    private bool _overflow;
 
     private readonly Queue<GameEvent> _eventQueue = new Queue<GameEvent>();
     private readonly List<GameEvent> _executedLog = new List<GameEvent>();
@@ -99,7 +98,6 @@ public class SmackResolver : MonoBehaviour
         _rules = rules;
         _totalScore = 0;
         _totalEventCount = 0;
-        _overflow = false;
         _eventQueue.Clear();
         _executedLog.Clear();
 
@@ -130,7 +128,7 @@ public class SmackResolver : MonoBehaviour
         var result = new SmackResult
         {
             ScoreGained = _totalScore,
-            EventOverflow = _overflow,
+            EventOverflow = false,
         };
         onRoundStable?.Invoke(result);
     }
@@ -223,16 +221,15 @@ public class SmackResolver : MonoBehaviour
     {
         while (_eventQueue.Count > 0)
         {
-            if (_totalEventCount >= _rules.EventLimit)
+            if (_totalEventCount >= 5000)
             {
-                _overflow = true;
                 _eventQueue.Clear();
-                Debug.LogError($"[SmackResolver] EventLimit({_rules.EventLimit}) 溢出，强制清空队列");
+                Debug.LogError("[SmackResolver] 事件数超 5000，强制清空");
                 break;
             }
+            _totalEventCount++;
 
             var ev = _eventQueue.Dequeue();
-            _totalEventCount++;
 
             if (IsEventInvalid(ev))
             {
@@ -370,6 +367,7 @@ public class SmackResolver : MonoBehaviour
             ScoreDelta = delta,
             ComboAtTrigger = hitNumber,
             ScoreOriginPos = originPos,
+            ScoreWorldPos = _boardView?.HexToWorld(originPos) ?? Vector3.zero,
         });
     }
 
@@ -378,10 +376,13 @@ public class SmackResolver : MonoBehaviour
         var target = FindPieceById(ev.TargetPieceId);
         if (target == null) { ev.Skipped = true; return; }
 
-        // 普通棋作为撞击者完成合法碰撞：+2 分
+        // 保存撞击者的 View，用于动画阶段播放大缩小
         var source = FindPieceById(ev.SourcePieceId);
         if (source != null && source.Type == PieceType.Normal)
+        {
+            ev.View = source.View;
             RecordScore(2, source.Position);
+        }
 
         // 被撞目标是得分棋：独立计数 → 指数得分 2^n
         if (target.Type == PieceType.Score)
@@ -514,6 +515,9 @@ public class SmackResolver : MonoBehaviour
             Executed = true,
         });
 
+        // 分裂一次加一分
+        RecordScore(1, originPos);
+
         // 两个生成方向：顺时针 60° 和逆时针 60°
         int dirCW  = Hex.RotateDir(collisionDir, 1);
         int dirCCW = Hex.RotateDirCCW(collisionDir, 1);
@@ -632,7 +636,7 @@ public class SmackResolver : MonoBehaviour
             _eventQueue.Enqueue(new GameEvent { Type = GameEventType.Collision, TargetPieceId = fp3.ID, SourcePieceId = piece.ID, Direction = ev.Direction });
     }
 
-    /// <summary>胃袋：沿方向前进，吃掉路径上所有棋子。</summary>
+    /// <summary>胃袋：每次前进1格，吃掉该格棋子后自动链式推入下一步。吃越多走越快。</summary>
     private void ExecuteStomachMove(GameEvent ev)
     {
         var stomach = FindPieceById(ev.TargetPieceId);
@@ -641,40 +645,52 @@ public class SmackResolver : MonoBehaviour
         ev.View = stomach.View;
 
         int dir = ev.Direction;
-        int eaten = 0;
-        var cur = stomach.Position;
+        var next = stomach.Position.Neighbor(dir);
+        var content = _board.GetContent(next);
 
-        while (true)
+        if (content == CellContent.Wall || content == CellContent.OutOfBoard)
         {
-            var next = cur.Neighbor(dir);
-            var content = _board.GetContent(next);
-            if (content == CellContent.Wall || content == CellContent.OutOfBoard) break;
-
-            if (content == CellContent.Piece)
-            {
-                var target = _board.GetPiece(next);
-                if (target != null)
-                {
-                    // 立即从棋盘删除被吃棋子，否则胃袋移入时覆盖、后续 Consume 会误删胃袋
-                    var eatenView = target.View;
-                    _board.RemovePiece(target);
-                    _pendingAnimLog.Add(new GameEvent
-                    {
-                        Type = GameEventType.Consume,
-                        RemovedView = eatenView,
-                        FromPos = target.Position,
-                        ToPos = target.Position,
-                        Executed = true,
-                    });
-                    eaten++;
-                }
-            }
-            // 胃袋进入下一格（空或棋子已删）
-            _board.MovePiece(stomach, next);
-            cur = next;
+            ev.ToPos = stomach.Position; // 到尽头了，不动
+            return;
         }
-        ev.ToPos = cur;
-        if (eaten > 0) RecordScore(eaten * 2, cur);
+
+        if (content == CellContent.Piece)
+        {
+            var target = _board.GetPiece(next);
+            if (target != null)
+            {
+                var eatenView = target.View;
+                _board.RemovePiece(target);
+                _pendingAnimLog.Add(new GameEvent
+                {
+                    Type = GameEventType.Consume,
+                    RemovedView = eatenView,
+                    FromPos = target.Position,
+                    ToPos = target.Position,
+                    Executed = true,
+                });
+                ev.ConsumeCount = 1; // 标识这一口吃了
+                RecordScore(2, next);
+            }
+        }
+
+        // 胃袋移入该格
+        _board.MovePiece(stomach, next);
+        ev.ToPos = next;
+
+        // 前方还有棋子：链式推入下一步，吃越多加速度越快
+        var nextNext = next.Neighbor(dir);
+        var nextContent = _board.GetContent(nextNext);
+        if (nextContent == CellContent.Piece || nextContent == CellContent.Empty)
+        {
+            _eventQueue.Enqueue(new GameEvent
+            {
+                Type = GameEventType.StomachMove,
+                TargetPieceId = stomach.ID,
+                Direction = dir,
+                ConsumeCount = ev.ConsumeCount + 1, // 累积步数
+            });
+        }
     }
 
     /// <summary>单个吞噬删除（胃袋用）。</summary>
@@ -994,6 +1010,7 @@ public class SmackResolver : MonoBehaviour
                     ScoreDelta = sDelta,
                     ComboAtTrigger = piece.ScoreHitCount,
                     ScoreOriginPos = pushTo,
+                    ScoreWorldPos = _boardView?.HexToWorld(pushTo) ?? Vector3.zero,
                     Executed = true,
                 });
             }
@@ -1200,14 +1217,17 @@ public class SmackResolver : MonoBehaviour
                         var fromWorld = _boardView.HexToWorld(ev.FromPos);
                         var toWorld = _boardView.HexToWorld(ev.ToPos);
                         ev.View.SnapTo(fromWorld);
-                        duration = ev.View.MoveTo(toWorld) / _animSpeedScale;
+                        float stepBoost = 1f + ev.ConsumeCount * 0.2f; // 胃袋逐格加速
+                        duration = ev.View.MoveTo(toWorld) / (_animSpeedScale * stepBoost);
                     }
                 }
                 break;
             }
             case GameEventType.Collision:
             {
-                // 碰撞不播震动，只是逻辑标记
+                // 普通棋撞击时播放放大缩小动画
+                if (ev.View != null)
+                    duration = ev.View.PlayAbilityFX() / _animSpeedScale;
                 break;
             }
             case GameEventType.AbilityTrigger:
@@ -1249,8 +1269,8 @@ public class SmackResolver : MonoBehaviour
             {
                 if (_hud != null && _boardView != null)
                 {
-                    var worldPos = _boardView.HexToWorld(ev.ScoreOriginPos);
-                    _hud.ShowScorePop(ev.ScoreDelta, ev.ComboAtTrigger, worldPos);
+                    var pos = _boardView.HexToWorld(ev.ScoreOriginPos);
+                    _hud.ShowScorePop(ev.ScoreDelta, ev.ComboAtTrigger, pos);
                 }
                 break;
             }
