@@ -22,4 +22,6 @@ public struct PreviewResult
 {
     public Dictionary<int, Hex> FinalPositions;
     public List<int> CollidingPieces;
+    /// <summary>将被撞中的棋子 ID（橙色描边对象）。</summary>
+    public List<int> HitTargetIds;
 }

@@ -54,6 +54,7 @@ public class SmackResolver : MonoBehaviour
         {
             FinalPositions = new Dictionary<int, Hex>(),
             CollidingPieces = new List<int>(),
+            HitTargetIds = new List<int>(),
         };
 
         // 克隆棋盘状态做模拟
@@ -83,7 +84,10 @@ public class SmackResolver : MonoBehaviour
             // 检查是否碰撞
             var front = simPositions[pieceId].Neighbor(gravDir);
             if (simGrid.ContainsKey(front))
+            {
                 result.CollidingPieces.Add(pieceId);
+                result.HitTargetIds.Add(simGrid[front]);
+            }
         }
         return result;
     }
