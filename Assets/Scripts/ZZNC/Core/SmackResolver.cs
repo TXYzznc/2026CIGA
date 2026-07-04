@@ -20,7 +20,8 @@ public class SmackResolver : MonoBehaviour
     private readonly Queue<GameEvent> _eventQueue = new Queue<GameEvent>();
     private readonly List<GameEvent> _executedLog = new List<GameEvent>();
     private readonly List<GameEvent> _pendingAnimLog = new List<GameEvent>();
-    private float _animSpeedScale = 1f; // Execute 内部直接添加的动画事件，排在主事件之后 // 播放器消费
+    private float _animSpeedScale = 1f;
+    private float _animAmplitudeScale = 1f; // Execute 内部直接添加的动画事件，排在主事件之后 // 播放器消费
 
     // ── 初始化 ────────────────────────────────────────────────────
 
@@ -112,11 +113,14 @@ public class SmackResolver : MonoBehaviour
         // A4：逐事件执行（先算逻辑记录，播放在下方）
         ProcessEventQueue();
 
-        // 队列越长动画越快：speedScale = 1 + log2(N) * 0.15，上限 3x
+        // 队列越长动画越快、越夸张
         int totalEvents = Mathf.Max(1, _executedLog.Count);
         _animSpeedScale = Mathf.Min(1f + Mathf.Log(totalEvents, 2f) * 0.15f, 3f);
+        _animAmplitudeScale = 1f + Mathf.Log(totalEvents, 2f) * 0.25f;
 
         // A9：逐条播放动画
+        TempPieceView.GlobalAmplitudeScale = _animAmplitudeScale;
+        TempPieceView.GlobalSpeedScale = _animSpeedScale;
         yield return StartCoroutine(PlayEventLog());
 
         var result = new SmackResult
