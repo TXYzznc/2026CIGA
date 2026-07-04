@@ -98,6 +98,11 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     [SerializeField, Range(0f, 2f)] private float tooltipHoverDelay = 0.5f;
     [SerializeField] private BoardHexPulseEffect comboPulse;
 
+    [Header("=== UI 渲染层级 ===")]
+    [SerializeField] private bool placeGameplayCanvasBehindBoard = true;
+    [SerializeField, Min(0.01f)] private float gameplayCanvasBehindBoardOffset = 5f;
+    [SerializeField] private int modalCanvasSortingOrder = 1000;
+
     [Header("Runtime Info（只读）")]
     [SerializeField] private int boardOrientation;
     [SerializeField] private int currentLevelId = FirstLevelId;
@@ -113,6 +118,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     private Transform _cellsRoot;
     private Transform _piecesRoot;
     private Transform _effectsRoot;
+    private Canvas _runtimeOverlayCanvas;
     private SmackResolver _resolver;
     private bool _isResolving;
     private int _comboCount;
@@ -145,6 +151,8 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     private void Awake()
     {
         EnsureRoots();
+        ConfigureGameplayCanvasLayering();
+        MoveModalViewsToOverlayCanvas();
         EnsureHoverTooltip();
         _resolver = gameObject.GetComponent<SmackResolver>();
         if (_resolver == null)
@@ -408,6 +416,87 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         return go.transform;
     }
 
+    private void ConfigureGameplayCanvasLayering()
+    {
+        if (!placeGameplayCanvasBehindBoard)
+            return;
+
+        var gameplayCanvas = FindFirstObjectByType<Canvas>();
+        if (gameplayCanvas == null || gameplayCanvas.renderMode != RenderMode.ScreenSpaceOverlay)
+            return;
+
+        var cam = Camera.main != null ? Camera.main : FindFirstObjectByType<Camera>();
+        if (cam == null)
+            return;
+
+        gameplayCanvas.renderMode = RenderMode.ScreenSpaceCamera;
+        gameplayCanvas.worldCamera = cam;
+        gameplayCanvas.planeDistance = Mathf.Max(0.01f, -cam.transform.position.z + transform.position.z + gameplayCanvasBehindBoardOffset);
+        gameplayCanvas.overrideSorting = true;
+        gameplayCanvas.sortingOrder = -100;
+    }
+
+    private void MoveModalViewsToOverlayCanvas()
+    {
+        var modalCanvas = EnsureRuntimeOverlayCanvas();
+        if (modalCanvas == null)
+            return;
+
+        MoveViewToCanvas(mainMenuView, modalCanvas.transform);
+        MoveViewToCanvas(settlementView, modalCanvas.transform);
+        MoveViewToCanvas(pieceTooltip, modalCanvas.transform);
+    }
+
+    private Canvas EnsureRuntimeOverlayCanvas()
+    {
+        if (_runtimeOverlayCanvas != null)
+            return _runtimeOverlayCanvas;
+
+        var existing = GameObject.Find("ZZNCModalOverlayCanvas");
+        if (existing != null && existing.TryGetComponent(out _runtimeOverlayCanvas))
+            return _runtimeOverlayCanvas;
+
+        var go = new GameObject("ZZNCModalOverlayCanvas", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+        _runtimeOverlayCanvas = go.GetComponent<Canvas>();
+        _runtimeOverlayCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        _runtimeOverlayCanvas.overrideSorting = true;
+        _runtimeOverlayCanvas.sortingOrder = modalCanvasSortingOrder;
+
+        var scaler = go.GetComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(3840f, 2160f);
+        scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+        scaler.matchWidthOrHeight = 0f;
+
+        DontDestroyOnLoad(go);
+        return _runtimeOverlayCanvas;
+    }
+
+    private static void MoveViewToCanvas(Component view, Transform canvasRoot)
+    {
+        if (view == null || canvasRoot == null)
+            return;
+
+        var rect = view.transform as RectTransform;
+        if (rect == null || rect.GetComponentInParent<Canvas>() == canvasRoot.GetComponent<Canvas>())
+            return;
+
+        var anchorMin = rect.anchorMin;
+        var anchorMax = rect.anchorMax;
+        var pivot = rect.pivot;
+        var anchoredPosition = rect.anchoredPosition;
+        var sizeDelta = rect.sizeDelta;
+        var localScale = rect.localScale;
+
+        rect.SetParent(canvasRoot, false);
+        rect.anchorMin = anchorMin;
+        rect.anchorMax = anchorMax;
+        rect.pivot = pivot;
+        rect.anchoredPosition = anchoredPosition;
+        rect.sizeDelta = sizeDelta;
+        rect.localScale = localScale;
+    }
+
     // Runtime fallback choice panel. The external popup can replace this through IThreeChoiceService.
     public void ShowChoicePanelOnce(Action<PieceType> onChosen = null)
         => ShowChoicePanel(1, onChosen);
@@ -435,16 +524,12 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
             return;
         }
 
-        var canvas = GetComponentInParent<Canvas>();
+        var canvas = EnsureRuntimeOverlayCanvas();
         if (canvas == null)
         {
-            canvas = FindFirstObjectByType<Canvas>();
-            if (canvas == null)
-            {
-                HideChoicePanel();
-                onFinished?.Invoke();
-                return;
-            }
+            HideChoicePanel();
+            onFinished?.Invoke();
+            return;
         }
 
         var mask = new GameObject("ChoiceMask", typeof(RectTransform), typeof(Image));
