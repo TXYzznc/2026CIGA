@@ -127,6 +127,8 @@ public class Board
 
     public void RemovePiece(Piece piece)
     {
+        if (piece.Type == PieceType.Explosion)
+            UnityEngine.Debug.LogWarning($"[Board] RemovePiece Explosion ID={piece.ID} at {piece.Position}\n{new System.Diagnostics.StackTrace(true)}");
         _pieces.Remove(piece.Position);
         _piecesById.Remove(piece.ID);
     }
