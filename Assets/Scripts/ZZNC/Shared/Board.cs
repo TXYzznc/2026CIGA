@@ -86,6 +86,7 @@ public class Board
     }
 
     public IReadOnlyCollection<Piece> AllPieces() => _pieces.Values;
+    public IReadOnlyCollection<Hex> AllWalls() => _walls;
 
     public List<Hex> EmptyCells()
     {
@@ -100,7 +101,17 @@ public class Board
 
     // ── 写入 ─────────────────────────────────────────────────────
 
-    public void PlaceWall(Hex pos) => _walls.Add(pos);
+    public Piece PlaceWall(Hex pos)
+    {
+        if (!_insideCells.Contains(pos)) return null;
+
+        Piece removed = null;
+        if (_pieces.TryGetValue(pos, out removed))
+            RemovePiece(removed);
+
+        _walls.Add(pos);
+        return removed;
+    }
 
     public void PlacePiece(Piece piece, Hex pos)
     {

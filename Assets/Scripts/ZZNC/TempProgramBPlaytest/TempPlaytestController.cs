@@ -19,6 +19,8 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
 {
     private const float PieceZ = -0.05f;
     private const float VisualBoardAngleOffset = 30f;
+    private const int FirstLevelId = 1;
+    private const int FinalLevelId = 3;
 
     /// <summary>含边缘半格墙圈的总半径（最外圈被大六边形轮廓裁成半格）。</summary>
     private int OuterRadius => boardRadius + 1;
@@ -64,6 +66,9 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     [Header("=== 特效 ===")]
     [SerializeField] private SmackImpactVFX impactVFX;
     [SerializeField] private HUDView hudView;
+    [SerializeField] private MonoBehaviour threeChoiceService;
+    [SerializeField] private MainMenuView mainMenuView;
+    [SerializeField] private SettlementView settlementView;
     [SerializeField] private BoardEdgeGlowEffect boardEdgeGlow;
     [SerializeField] private RotationPreviewRenderer previewRenderer;
     [SerializeField] private PieceTooltip pieceTooltip;
@@ -72,6 +77,11 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
 
     [Header("Runtime Info（只读）")]
     [SerializeField] private int boardOrientation;
+    [SerializeField] private int currentLevelId = FirstLevelId;
+    [SerializeField] private int currentRoundIndex = 1;
+    [SerializeField] private int remainingSmacks;
+    [SerializeField] private int currentScore;
+    [SerializeField] private bool autoStartGame = true;
 
     private readonly Board _board = new Board();
     private readonly Dictionary<Hex, GameObject> _cellObjects = new Dictionary<Hex, GameObject>();
@@ -92,6 +102,12 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     private int _targetOrientation;    // 逻辑目标朝向
     private Board.Snapshot _snapshot;
     private SpriteMask _boardMask;
+    private ZZNCLevelConfigTable _levelConfig;
+    private List<ZZNCLevelRoundConfig> _currentLevelRounds = new List<ZZNCLevelRoundConfig>();
+    private ZZNCLevelRoundConfig _currentRound;
+    private IThreeChoiceService _choiceService;
+    private bool _gameActive;
+    private bool _waitingForChoice;
 
     private static readonly Color HoverCellTint = new Color(1f, 0.92f, 0.55f, 1f);
     private const int HexMaskTextureSize = 1024;
@@ -111,26 +127,59 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
 
         if (hudView != null)
             hudView.OnSmackClicked += OnSmackRequest;
+        if (mainMenuView != null)
+            mainMenuView.OnStartClicked += StartNewGame;
+        if (settlementView != null)
+        {
+            settlementView.OnNextClicked += StartNextLevelFromResult;
+            settlementView.OnRetryClicked += RestartCurrentLevel;
+            settlementView.OnMainMenuClicked += ReturnToMainMenu;
+        }
+
+        _choiceService = threeChoiceService as IThreeChoiceService;
+        if (_choiceService == null)
+        {
+            foreach (var candidate in FindObjectsByType<MonoBehaviour>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                if (candidate is IThreeChoiceService service)
+                {
+                    _choiceService = service;
+                    break;
+                }
+            }
+        }
 
         _targetOrientation = boardOrientation;
         var initGravDir = Hex.OrientationToGravityDir(_targetOrientation);
         var initLocalGrav = HexToLocal(new Hex(0, 0).Neighbor(initGravDir));
         _visualAngle = GetVisualBoardAngle(initLocalGrav);
 
-        BuildLayout();
+        _levelConfig = ZZNCLevelConfigLoader.Load();
+        if (autoStartGame)
+            StartNewGame();
+        else
+            ShowMainMenu();
     }
 
     private void OnDestroy()
     {
         if (hudView != null)
             hudView.OnSmackClicked -= OnSmackRequest;
+        if (mainMenuView != null)
+            mainMenuView.OnStartClicked -= StartNewGame;
+        if (settlementView != null)
+        {
+            settlementView.OnNextClicked -= StartNextLevelFromResult;
+            settlementView.OnRetryClicked -= RestartCurrentLevel;
+            settlementView.OnMainMenuClicked -= ReturnToMainMenu;
+        }
 
         ClearHoveredCell();
     }
 
     private void Update()
     {
-        if (_isResolving)
+        if (!_gameActive || _isResolving || _waitingForChoice)
         {
             // 结算期间持续把流光速度归零，让 SmoothDamp 正常淡出
             boardEdgeGlow?.SetSpeed(0f);
@@ -177,7 +226,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
 
         UpdateHoverTooltip();
         if (Input.GetKeyDown(KeyCode.Tab))
-            BuildLayout();
+            RestartCurrentLevel();
     }
 
     private void RotateTarget(int direction)
@@ -212,7 +261,8 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     public void ShowScorePop(int scoreDelta, int combo, Vector3 worldPos)
     {
         // 每次弹出都实时累加到总分
-        hudView?.AddScore(scoreDelta);
+        currentScore += scoreDelta;
+        hudView?.SetScore(currentScore);
         float shake = 0.1f + combo * 0.015f;
         hudView?.ShakeScore(shake);
         _comboCount++;
@@ -296,7 +346,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         return go.transform;
     }
 
-    private void BuildLayout()
+    private void BuildLayout(bool useConfiguredInitialPieces = false)
     {
         _isResolving = false;
         pieceTooltip?.Hide();
@@ -320,6 +370,9 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
                 _board.PlaceWall(cell);
         }
 
+        wallSet.Add(new Hex(0, 0));
+        _board.PlaceWall(new Hex(0, 0));
+
         EnsureBoardMask();
 
         foreach (var cell in _board.AllInsideCells())
@@ -334,6 +387,12 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
             _cellObjects[cell] = obj;
         }
 
+        if (useConfiguredInitialPieces)
+        {
+            SpawnInitialRandomPieces(_currentRound != null ? _currentRound.initialPieceCount : 0);
+        }
+        else
+        {
         foreach (var pe in pieces)
         {
             var pos = new Hex(pe.q, pe.r);
@@ -347,6 +406,8 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
             piece.View = view;
             _board.PlacePiece(piece, pos);
             _pieceViews[piece] = view;
+        }
+
         }
 
         ApplyBoardRotation();
@@ -376,6 +437,251 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         return view;
     }
 
+    private void StartNewGame()
+    {
+        currentLevelId = FirstLevelId;
+        StartLevel(currentLevelId);
+    }
+
+    private void StartLevel(int levelId)
+    {
+        settlementView?.Hide();
+        mainMenuView?.Hide();
+        _gameActive = true;
+        _waitingForChoice = false;
+        currentLevelId = levelId;
+        currentScore = 0;
+
+        _currentLevelRounds = ZZNCLevelConfigLoader.GetRoundsByLevelId(levelId);
+        if (_currentLevelRounds.Count == 0)
+        {
+            Debug.LogError($"[ZZNC.Flow] Missing level config for level {levelId}.");
+            ShowMainMenu();
+            return;
+        }
+
+        currentRoundIndex = 1;
+        StartRound(0, true);
+    }
+
+    private void StartRound(int roundListIndex, bool rebuildBoard)
+    {
+        if (roundListIndex < 0 || roundListIndex >= _currentLevelRounds.Count)
+            return;
+
+        _currentRound = _currentLevelRounds[roundListIndex];
+        currentRoundIndex = _currentRound.roundIndex;
+        remainingSmacks = _currentRound.smackCount;
+        boardRadius = MaxRowLengthToBoardRadius(_currentRound.maxRowLength);
+
+        hudView?.SetTargetScore(_currentRound.targetScore);
+        hudView?.SetScoreImmediate(currentScore);
+        hudView?.SetSmackButtonInteractable(true);
+
+        if (rebuildBoard)
+            BuildLayout(true);
+
+        RefreshPreview();
+        Debug.Log($"[ZZNC.Flow] Level {currentLevelId}, Round {currentRoundIndex}, target={_currentRound.targetScore}, smacks={remainingSmacks}");
+    }
+
+    private void StartNextLevelFromResult()
+    {
+        StartLevel(Mathf.Min(FinalLevelId, currentLevelId + 1));
+    }
+
+    private void RestartCurrentLevel()
+    {
+        StartLevel(currentLevelId);
+    }
+
+    private void ReturnToMainMenu()
+    {
+        ShowMainMenu();
+    }
+
+    private void ShowMainMenu()
+    {
+        _gameActive = false;
+        _waitingForChoice = false;
+        _isResolving = false;
+        hudView?.SetSmackButtonInteractable(false);
+        settlementView?.Hide();
+        mainMenuView?.Show();
+        ClearPreview();
+    }
+
+    private static int MaxRowLengthToBoardRadius(int maxRowLength)
+    {
+        return Mathf.Max(1, Mathf.RoundToInt(maxRowLength * 0.5f) - 1);
+    }
+
+    private void SpawnInitialRandomPieces(int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            var empty = GetRandomEmptyCell();
+            if (!empty.HasValue) return;
+            PlaceRuntimePiece(PickRandomPieceType(), empty.Value);
+        }
+    }
+
+    private void PlaceRuntimePiece(PieceType type, Hex pos)
+    {
+        if (_board.GetContent(pos) != CellContent.Empty)
+            return;
+
+        var piece = new Piece { Type = type };
+        var view = CreatePieceView(type, pos);
+        piece.View = view;
+        _board.PlacePiece(piece, pos);
+        _pieceViews[piece] = view;
+    }
+
+    private Hex? GetRandomEmptyCell()
+    {
+        var empties = _board.EmptyCells();
+        if (empties.Count == 0) return null;
+        return empties[UnityEngine.Random.Range(0, empties.Count)];
+    }
+
+    private PieceType PickRandomPieceType()
+    {
+        var pool = _levelConfig?.choicePool;
+        if (pool == null || pool.Length == 0)
+            return (PieceType)UnityEngine.Random.Range(0, Enum.GetValues(typeof(PieceType)).Length);
+
+        int total = 0;
+        foreach (var entry in pool)
+            total += Mathf.Max(0, entry.weight);
+
+        if (total <= 0)
+            return (PieceType)UnityEngine.Random.Range(0, Enum.GetValues(typeof(PieceType)).Length);
+
+        int roll = UnityEngine.Random.Range(0, total);
+        foreach (var entry in pool)
+        {
+            roll -= Mathf.Max(0, entry.weight);
+            if (roll < 0 && Enum.TryParse(entry.pieceType, out PieceType type))
+                return type;
+        }
+
+        return PieceType.Normal;
+    }
+
+    private List<ChoiceOption> BuildChoicePool()
+    {
+        var result = new List<ChoiceOption>();
+        var pool = _levelConfig?.choicePool;
+        if (pool != null)
+        {
+            foreach (var entry in pool)
+            {
+                if (!Enum.TryParse(entry.pieceType, out PieceType type)) continue;
+                result.Add(new ChoiceOption(type.ToString(), type.ToString(), string.Empty, Mathf.Max(0, entry.weight)));
+            }
+        }
+
+        if (result.Count == 0)
+        {
+            foreach (PieceType type in Enum.GetValues(typeof(PieceType)))
+                result.Add(new ChoiceOption(type.ToString(), type.ToString(), string.Empty, 1f));
+        }
+        return result;
+    }
+
+    private IEnumerator RunChoiceSequence(int count, Action onComplete)
+    {
+        _waitingForChoice = true;
+        hudView?.SetSmackButtonInteractable(false);
+
+        for (int i = 0; i < count; i++)
+        {
+            if (_board.EmptyCells().Count == 0)
+                break;
+
+            bool finished = false;
+            ChoiceResult choiceResult = default;
+            bool hasChoiceResult = false;
+            var request = new ChoiceRequest(
+                i == 0 ? "Choose a piece" : $"Bonus choice {i + 1}",
+                string.Empty,
+                BuildChoicePool(),
+                3,
+                true);
+
+            if (_choiceService != null)
+                yield return StartCoroutine(_choiceService.TriggerChoice(request, r => { choiceResult = r; hasChoiceResult = true; finished = true; }));
+            else
+                finished = true;
+
+            while (!finished)
+                yield return null;
+
+            if (!hasChoiceResult || choiceResult.SelectedOption == null)
+                continue;
+
+            if (Enum.TryParse(choiceResult.SelectedOption.Id, out PieceType selectedType))
+            {
+                var target = GetRandomEmptyCell();
+                if (target.HasValue)
+                    PlaceRuntimePiece(selectedType, target.Value);
+            }
+        }
+
+        SyncSpawnedPieceViews();
+        RefreshPreview();
+        _waitingForChoice = false;
+        hudView?.SetSmackButtonInteractable(_gameActive);
+        onComplete?.Invoke();
+    }
+
+    private void AddWallsAfterRound(int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            var candidates = new List<Hex>();
+            foreach (var cell in _board.AllInsideCells())
+            {
+                if (_board.GetContent(cell) == CellContent.Wall) continue;
+                candidates.Add(cell);
+            }
+            if (candidates.Count == 0) return;
+
+            var pos = candidates[UnityEngine.Random.Range(0, candidates.Count)];
+            var removed = _board.PlaceWall(pos);
+            if (removed != null && removed.View != null)
+                DestroyView(removed.View);
+
+            if (_cellObjects.TryGetValue(pos, out var oldCell) && oldCell != null)
+                Destroy(oldCell);
+
+            var obj = Instantiate(hexWallPrefab, HexToWorld(pos), Quaternion.identity, _cellsRoot);
+            FitCellVisual(obj);
+            obj.name = $"Wall_{pos.q}_{pos.r}";
+            foreach (var sr in obj.GetComponentsInChildren<SpriteRenderer>(true))
+                sr.maskInteraction = SpriteMaskInteraction.VisibleInsideMask;
+            _cellObjects[pos] = obj;
+        }
+        RemoveDeadViewEntries();
+    }
+
+    private void ShowLevelFail()
+    {
+        _gameActive = false;
+        hudView?.SetSmackButtonInteractable(false);
+        settlementView?.Show("Failed", currentScore, $"Level {currentLevelId}  Round {currentRoundIndex}");
+    }
+
+    private void ShowLevelSuccess()
+    {
+        _gameActive = false;
+        hudView?.SetSmackButtonInteractable(false);
+        bool isFinal = currentLevelId >= FinalLevelId;
+        settlementView?.Show(isFinal ? "Game Clear" : $"Level {currentLevelId} Clear", currentScore, isFinal ? "All levels completed." : "Choose next level or return.");
+        settlementView?.SetNextInteractable(!isFinal);
+    }
+
     private Sprite GetPieceSprite(PieceType type) => type switch
     {
         PieceType.Normal     => spriteNormal,
@@ -394,7 +700,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     // 空格键和按钮点击共用的入口，含防重入检查
     private void OnSmackRequest()
     {
-        if (_isResolving) return;
+        if (!_gameActive || _isResolving || _waitingForChoice || remainingSmacks <= 0) return;
         impactVFX?.PlaySmackImpact(HexToWorld(new Hex(0, 0)));
         ExecuteCurrentSmack();
     }
@@ -421,13 +727,51 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         _resolver.ExecuteSmack(boardOrientation, SmackRules.Default, result =>
         {
             _isResolving = false;
-            if (result.ScoreGained > 0)
-                hudView?.AddScore(result.ScoreGained);
             SyncSpawnedPieceViews();
             RemoveDeadViewEntries();
             RefreshPreview();
+            OnSmackStable();
             Debug.Log($"[ZZNC.TempProgramB] Smack stable. Score={result.ScoreGained}, Overflow={result.EventOverflow}");
         });
+    }
+
+    private void OnSmackStable()
+    {
+        remainingSmacks = Mathf.Max(0, remainingSmacks - 1);
+
+        if (remainingSmacks > 0)
+        {
+            StartCoroutine(RunChoiceSequence(1, RefreshPreview));
+            return;
+        }
+
+        if (_currentRound == null)
+        {
+            ShowLevelFail();
+            return;
+        }
+
+        if (currentScore < _currentRound.targetScore)
+        {
+            ShowLevelFail();
+            return;
+        }
+
+        currentScore -= _currentRound.targetScore;
+        hudView?.SetScore(currentScore);
+
+        bool isLastRound = _currentLevelRounds == null || currentRoundIndex >= _currentLevelRounds.Count;
+        if (isLastRound)
+        {
+            ShowLevelSuccess();
+            return;
+        }
+
+        StartCoroutine(RunChoiceSequence(3, () =>
+        {
+            AddWallsAfterRound(_currentRound.addWallCountOnPass);
+            StartRound(currentRoundIndex, false);
+        }));
     }
 
     private void UndoLastSmack()

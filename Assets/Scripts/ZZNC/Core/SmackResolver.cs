@@ -14,6 +14,7 @@ public class SmackResolver : MonoBehaviour
     private SmackRules _rules;
     private int _totalScore;
     private int _totalEventCount;
+    private bool _eventOverflow;
     private int _currentGravityDir;
     private int _popSerial;
     private int _splitDepth; // 分裂链深度，越深子棋生成越快
@@ -101,6 +102,7 @@ public class SmackResolver : MonoBehaviour
         _rules = rules;
         _totalScore = 0;
         _totalEventCount = 0;
+        _eventOverflow = false;
         _popSerial = 0;
         _splitDepth = 0;
         _eventQueue.Clear();
@@ -134,7 +136,7 @@ public class SmackResolver : MonoBehaviour
         var result = new SmackResult
         {
             ScoreGained = _totalScore,
-            EventOverflow = false,
+            EventOverflow = _eventOverflow,
         };
         onRoundStable?.Invoke(result);
     }
@@ -227,11 +229,12 @@ public class SmackResolver : MonoBehaviour
     {
         while (_eventQueue.Count > 0 || _priorityQueue.Count > 0)
         {
-            if (_totalEventCount >= 5000)
+            if (_totalEventCount >= _rules.EventLimit)
             {
                 _eventQueue.Clear();
                 _priorityQueue.Clear();
-                Debug.LogError("[SmackResolver] 事件数超 5000，强制清空");
+                _eventOverflow = true;
+                Debug.LogError($"[SmackResolver] Event count exceeded {_rules.EventLimit}, queues cleared.");
                 break;
             }
             _totalEventCount++;
