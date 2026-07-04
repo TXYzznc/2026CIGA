@@ -66,6 +66,8 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     [Header("=== 特效 ===")]
     [SerializeField] private SmackImpactVFX impactVFX;
     [SerializeField] private HUDView hudView;
+    [SerializeField] private BoardEdgeGlowEffect boardEdgeGlow;
+    [SerializeField] private RotationPreviewRenderer previewRenderer;
 
     [Header("Runtime Info（只读）")]
     [SerializeField] private int boardOrientation;
@@ -132,6 +134,9 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         _visualAngle += _springVelocity * dt;
 
         transform.rotation = Quaternion.Euler(0f, 0f, _visualAngle);
+
+        // 用弹簧速度驱动边缘流光亮度
+        boardEdgeGlow?.SetSpeed(Mathf.Abs(_springVelocity));
 
         // 弹簧稳定后归位并刷新预览
         if (Mathf.Abs(displacement) < 0.5f && Mathf.Abs(_springVelocity) < 1f)
@@ -253,6 +258,11 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         }
 
         ApplyBoardRotation();
+
+        // 初始化旋转特效
+        boardEdgeGlow?.Setup(boardRadius, CellSize);
+        previewRenderer?.Setup(previewDotPrefab, 0.78f * LayoutScale, _effectsRoot);
+
         RefreshPreview();
         Debug.Log($"[Layout] 已加载 {pieces.Count} 枚棋子, {walls.Count} 面墙. 空格=拍击, Q=撤销, Tab=重载布局");
     }
@@ -367,36 +377,37 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     {
         ClearPreview();
 
-        if (previewDotPrefab == null || _resolver == null)
-        {
-            return;
-        }
+        if (_resolver == null) return;
 
+        var gravityDir = Hex.OrientationToGravityDir(boardOrientation);
         var preview = _resolver.SimulateSmack(boardOrientation);
-        foreach (var kv in preview.FinalPositions)
-        {
-            var piece = _board.GetPieceById(kv.Key);
-            if (piece == null || piece.Position == kv.Value)
-            {
-                continue;
-            }
 
-            var dot = Instantiate(previewDotPrefab, HexToWorld(kv.Value) + new Vector3(0f, 0f, -0.1f), Quaternion.identity, _effectsRoot);
-            dot.name = $"Preview_{kv.Key}_{kv.Value.q}_{kv.Value.r}";
-            _previewObjects.Add(dot);
+        if (previewRenderer != null)
+        {
+            previewRenderer.Refresh(preview, _board, gravityDir, HexToWorld, GetPieceSprite);
+        }
+        else if (previewDotPrefab != null)
+        {
+            // 无渲染器时退回原有落点 dot
+            foreach (var kv in preview.FinalPositions)
+            {
+                var piece = _board.GetPieceById(kv.Key);
+                if (piece == null || piece.Position == kv.Value) continue;
+                var dot = Instantiate(previewDotPrefab, HexToWorld(kv.Value) + new Vector3(0f, 0f, -0.1f), Quaternion.identity, _effectsRoot);
+                dot.name = $"Preview_{kv.Key}_{kv.Value.q}_{kv.Value.r}";
+                _previewObjects.Add(dot);
+            }
         }
     }
 
     private void ClearPreview()
     {
+        previewRenderer?.Clear();
+
         foreach (var obj in _previewObjects)
         {
-            if (obj != null)
-            {
-                Destroy(obj);
-            }
+            if (obj != null) Destroy(obj);
         }
-
         _previewObjects.Clear();
     }
 

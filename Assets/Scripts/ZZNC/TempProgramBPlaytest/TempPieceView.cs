@@ -18,18 +18,27 @@ public class TempPieceView : MonoBehaviour, IPieceView
     /// <summary>队列越长该值越大，协程动画实际速度越快。由 SmackResolver 设置。</summary>
     public static float GlobalSpeedScale = 1f;
 
+    private static readonly int StretchDir    = Shader.PropertyToID("_StretchDir");
+    private static readonly int StretchAmount = Shader.PropertyToID("_StretchAmount");
+
+    private MaterialPropertyBlock _mpb;
+
     public void Init(Sprite sprite, Material material, int sortingOrder)
     {
         _renderer = gameObject.GetComponent<SpriteRenderer>();
         if (_renderer == null)
-        {
             _renderer = gameObject.AddComponent<SpriteRenderer>();
-        }
 
         _renderer.sprite = sprite;
         _renderer.sharedMaterial = material;
         _renderer.sortingOrder = sortingOrder;
         _baseScale = transform.localScale;
+
+        _mpb = new MaterialPropertyBlock();
+        _renderer.GetPropertyBlock(_mpb);
+        _mpb.SetVector(StretchDir,    Vector4.zero);
+        _mpb.SetFloat (StretchAmount, 0f);
+        _renderer.SetPropertyBlock(_mpb);
     }
 
     public void SnapTo(Vector3 worldPos)
@@ -87,29 +96,126 @@ public class TempPieceView : MonoBehaviour, IPieceView
 
     private IEnumerator AnimateMove(Vector3 target)
     {
-        float dur = MoveDuration / GlobalSpeedScale;
-        var start = transform.position;
+        float dur   = MoveDuration / GlobalSpeedScale;
+        var   start = transform.position;
+
+        // 运动方向转换到本地空间（Shader 在 local space 做顶点拉伸）
+        Vector3 worldDir = (target - start).normalized;
+        Vector3 localDir = transform.InverseTransformDirection(worldDir);
+
         for (var t = 0f; t < dur; t += Time.deltaTime)
         {
-            var k = Mathf.SmoothStep(0f, 1f, t / dur);
+            float k = Mathf.SmoothStep(0f, 1f, t / dur);
             transform.position = Vector3.Lerp(start, target, k);
+
+            // 速度曲线：中段最快，两端为 0
+            // SmoothStep 的导数 ≈ 6t(1-t)，归一化后峰值在 t=0.5
+            float speed01 = 6f * (t / dur) * (1f - t / dur); // 0→1→0
+            float stretch = speed01 * GlobalAmplitudeScale * 0.8f;
+            stretch = Mathf.Clamp01(stretch);
+
+            if (_mpb != null && _renderer != null)
+            {
+                _mpb.SetVector(StretchDir,    new Vector4(localDir.x, localDir.y, 0f, 0f));
+                _mpb.SetFloat (StretchAmount, stretch);
+                _renderer.SetPropertyBlock(_mpb);
+            }
+
             yield return null;
         }
+
         transform.position = target;
+
+        // 落点：清除拉伸，生成撞击粒子
+        if (_mpb != null && _renderer != null)
+        {
+            _mpb.SetFloat(StretchAmount, 0f);
+            _renderer.SetPropertyBlock(_mpb);
+        }
+        SpawnLandParticles(target, worldDir);
     }
+
+    // -------------------------------------------------------
+    // 落地撞击粒子
+    // -------------------------------------------------------
+
+    private static void SpawnLandParticles(Vector3 worldPos, Vector3 arrivalDir)
+    {
+        var go = new GameObject("LandParticles") { hideFlags = HideFlags.HideAndDontSave };
+        go.transform.position = worldPos;
+
+        var ps   = go.AddComponent<ParticleSystem>();
+        var main = ps.main;
+        main.loop            = false;
+        main.playOnAwake     = false;
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+        main.maxParticles    = 20;
+        main.startLifetime   = new ParticleSystem.MinMaxCurve(0.18f, 0.38f);
+        main.startSpeed      = new ParticleSystem.MinMaxCurve(0.8f,  2.2f);
+        main.startSize       = new ParticleSystem.MinMaxCurve(0.04f, 0.11f);
+        main.gravityModifier = 0.25f;
+        main.startColor      = new ParticleSystem.MinMaxGradient(
+            new Color(1f, 0.95f, 0.7f, 0.9f),
+            new Color(0.9f, 0.55f, 0.2f, 0.7f));
+
+        var emission = ps.emission;
+        emission.enabled = false;
+
+        // 形状：半球面，朝向来方向（粒子往撞上去的方向扇形喷出）
+        var shape = ps.shape;
+        shape.shapeType  = ParticleSystemShapeType.Hemisphere;
+        shape.radius     = 0.1f;
+        // 把半球对齐到来方向：旋转使 +Y 指向 arrivalDir
+        shape.rotation   = Quaternion.FromToRotation(Vector3.up, arrivalDir).eulerAngles;
+
+        var sol = ps.sizeOverLifetime;
+        sol.enabled = true;
+        sol.size    = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.Linear(0f, 1f, 1f, 0f));
+
+        var r = ps.GetComponent<ParticleSystemRenderer>();
+        r.material     = new Material(Shader.Find("Sprites/Default")) { hideFlags = HideFlags.HideAndDontSave };
+        r.sortingOrder = 10;
+
+        ps.Emit(10);
+
+        // 延迟销毁（等粒子寿命结束）
+        Object.Destroy(go, 0.6f);
+    }
+
+    // -------------------------------------------------------
+    // Squash & Stretch 碰撞震动
+    // -------------------------------------------------------
 
     private IEnumerator AnimateShake()
     {
         float dur = FxDuration / GlobalSpeedScale;
-        var start = transform.localPosition;
-        float amp = GlobalAmplitudeScale * GlobalAmplitudeScale;
-        for (var t = 0f; t < dur; t += Time.deltaTime)
+        float amp = Mathf.Clamp(GlobalAmplitudeScale, 0.5f, 2.5f);
+
+        // 阶段一：受击瞬间压扁（X 扩张，Y 缩短）
+        float squashDur = dur * 0.25f;
+        for (var t = 0f; t < squashDur; t += Time.deltaTime)
         {
-            var phase = Mathf.Sin(t * 90f) * 0.08f * amp * (1f - t / dur);
-            transform.localPosition = start + new Vector3(phase, 0f, 0f);
+            float k = t / squashDur; // 0→1
+            float x = Mathf.Lerp(1f, 1f + 0.45f * amp, k);
+            float y = Mathf.Lerp(1f, 1f - 0.35f * amp, k);
+            transform.localScale = new Vector3(_baseScale.x * x, _baseScale.y * y, _baseScale.z);
             yield return null;
         }
-        transform.localPosition = start;
+
+        // 阶段二：弹性过冲回弹（Overshoot：先超过基准再收回）
+        float stretchDur = dur * 0.75f;
+        for (var t = 0f; t < stretchDur; t += Time.deltaTime)
+        {
+            float k = t / stretchDur; // 0→1
+            // 弹性曲线：用衰减正弦模拟弹跳
+            float bounce = Mathf.Exp(-k * 5f) * Mathf.Cos(k * Mathf.PI * 3.5f);
+            float x = 1f + bounce * 0.25f * amp;
+            float y = 1f - bounce * 0.20f * amp;
+            transform.localScale = new Vector3(_baseScale.x * x, _baseScale.y * y, _baseScale.z);
+            yield return null;
+        }
+
+        transform.localScale = _baseScale;
     }
 
     private IEnumerator AnimatePulse()
