@@ -52,8 +52,10 @@ public class SmackButtonParticlesEffect : MonoBehaviour
         var cam = Camera.main;
         if (cam == null || buttonRect == null) return;
 
-        // Overlay Canvas 传 null camera
-        Vector2 screenPos = RectTransformUtility.WorldToScreenPoint(null, buttonRect.position);
+        // rect.center 是本地空间下的视觉中心（与 pivot 无关）
+        // TransformPoint 转到世界空间后再映射屏幕坐标，Overlay Canvas 传 null camera
+        Vector3 rectWorldCenter = buttonRect.TransformPoint(buttonRect.rect.center);
+        Vector2 screenPos = RectTransformUtility.WorldToScreenPoint(null, rectWorldCenter);
 
         // worldDepth：相机到粒子的距离（沿 forward 轴）
         float z = cam.nearClipPlane + worldDepth;

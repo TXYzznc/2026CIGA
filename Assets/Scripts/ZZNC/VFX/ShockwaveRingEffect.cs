@@ -31,25 +31,41 @@ public class ShockwaveRingEffect : MonoBehaviour
     {
         transform.position = new Vector3(worldPos.x, worldPos.y, worldPos.z - 0.5f);
 
-        // 层 1：主扩散环
-        BuildRing(gameObject, _color, lineWidth: 0.15f,
-                  endRadius: _endRadius, duration: _duration, ease: Ease.OutExpo);
+        // 层 1：主冲击环 — 最粗最快，立即出现
+        BuildRing(gameObject, _color,
+                  lineWidth: 0.18f, endRadius: _endRadius,
+                  duration: _duration, delay: 0f, ease: Ease.OutExpo);
 
-        // 层 2：回声环（细、小、快）
-        var echoGo    = new GameObject("EchoRing");
-        echoGo.transform.SetParent(transform, false);
-        var echoColor = new Color(_color.r * 0.6f, _color.g * 0.85f, 1f, _color.a * 0.55f);
-        BuildRing(echoGo, echoColor, lineWidth: 0.055f,
-                  endRadius: _endRadius * 0.72f, duration: _duration * 0.6f, ease: Ease.OutCubic);
+        // 层 2：第二波 — 略细，稍慢，偏暖橙，延迟 0.06s
+        var ring2Go    = new GameObject("Ring2");
+        ring2Go.transform.SetParent(transform, false);
+        var ring2Color = new Color(1f, _color.g * 0.75f, _color.b * 0.3f, _color.a * 0.75f);
+        BuildRing(ring2Go, ring2Color,
+                  lineWidth: 0.10f, endRadius: _endRadius * 0.82f,
+                  duration: _duration * 0.88f, delay: 0.06f, ease: Ease.OutCubic);
 
-        // 层 3：火花粒子
+        // 层 3：第三波 — 更细，偏冷蓝白，延迟 0.13s
+        var ring3Go    = new GameObject("Ring3");
+        ring3Go.transform.SetParent(transform, false);
+        var ring3Color = new Color(_color.r * 0.55f, _color.g * 0.85f, 1f, _color.a * 0.50f);
+        BuildRing(ring3Go, ring3Color,
+                  lineWidth: 0.055f, endRadius: _endRadius * 0.65f,
+                  duration: _duration * 0.70f, delay: 0.13f, ease: Ease.OutQuad);
+
+        // 层 4：尾波 — 最细最小，纯白，延迟 0.20s，消失最快
+        var ring4Go    = new GameObject("Ring4");
+        ring4Go.transform.SetParent(transform, false);
+        var ring4Color = new Color(1f, 1f, 1f, _color.a * 0.35f);
+        BuildRing(ring4Go, ring4Color,
+                  lineWidth: 0.03f, endRadius: _endRadius * 0.48f,
+                  duration: _duration * 0.55f, delay: 0.20f, ease: Ease.OutQuad);
+
+        // 粒子
         SpawnSparks();
-
-        // 层 4：碎屑粒子
         SpawnDebris();
 
         // 整体销毁（等最长动画结束）
-        DOVirtual.DelayedCall(_duration + 0.2f, () => { if (this != null) Destroy(gameObject); });
+        DOVirtual.DelayedCall(_duration + 0.35f, () => { if (this != null) Destroy(gameObject); });
     }
 
     // -------------------------------------------------------
@@ -57,7 +73,7 @@ public class ShockwaveRingEffect : MonoBehaviour
     // -------------------------------------------------------
 
     private void BuildRing(GameObject host, Color color, float lineWidth,
-                           float endRadius, float duration, Ease ease)
+                           float endRadius, float duration, float delay, Ease ease)
     {
         var lr = host.AddComponent<LineRenderer>();
         lr.loop          = true;
@@ -65,17 +81,21 @@ public class ShockwaveRingEffect : MonoBehaviour
         lr.useWorldSpace = false;
         lr.startWidth    = lineWidth;
         lr.endWidth      = lineWidth;
-        lr.startColor    = color;
-        lr.endColor      = color;
+        lr.startColor    = new Color(color.r, color.g, color.b, 0f); // 延迟前隐藏
+        lr.endColor      = new Color(color.r, color.g, color.b, 0f);
         lr.material      = new Material(Shader.Find("Sprites/Default")) { hideFlags = HideFlags.HideAndDontSave };
         lr.sortingOrder  = 20;
 
-        const float startRadius = 0.2f;
+        const float startRadius = 0.15f;
         float radius = startRadius;
         Color c = color;
+        c.a = 0f;
         SetCircle(lr, radius);
 
         var seq = DOTween.Sequence();
+        seq.AppendInterval(delay);
+        // 出现瞬间把 alpha 打满
+        seq.AppendCallback(() => { c.a = color.a; lr.startColor = c; lr.endColor = c; });
         seq.Append(
             DOTween.To(() => radius, v => { radius = v; SetCircle(lr, v); }, endRadius, duration)
                    .SetEase(ease));
