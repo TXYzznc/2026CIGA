@@ -22,6 +22,7 @@ public class BoardHexPulseEffect : MonoBehaviour
     private readonly float[] _ringScale = { 1f, 0.72f, 0.48f };
     private readonly Vector3[] _basePoints = new Vector3[CornerCount];
     private readonly float[] _cornerNoise = new float[CornerCount];
+    private readonly Material[] _materials = new Material[3];
 
     private float _outerRadius;
     private float _elapsed = 999f;
@@ -32,10 +33,10 @@ public class BoardHexPulseEffect : MonoBehaviour
     {
         EnsureRings();
 
-        _outerRadius = Mathf.Sqrt(3f) * boardRadius * cellSize + cellSize * 0.68f;
+        _outerRadius = 2f * boardRadius * cellSize;
         for (int i = 0; i < CornerCount; i++)
         {
-            float angle = 60f * i * Mathf.Deg2Rad;
+            float angle = (30f + 60f * i) * Mathf.Deg2Rad;
             _basePoints[i] = new Vector3(Mathf.Cos(angle) * _outerRadius, Mathf.Sin(angle) * _outerRadius, -0.04f);
         }
 
@@ -45,6 +46,8 @@ public class BoardHexPulseEffect : MonoBehaviour
     public void Pulse(int combo)
     {
         EnsureRings();
+        if (_outerRadius <= 0f)
+            Setup(3, 1.45f);
 
         int comboSpan = Mathf.Max(1, fullCombo - 1);
         _comboT = Mathf.Clamp01((combo - 1f) / comboSpan);
@@ -139,7 +142,10 @@ public class BoardHexPulseEffect : MonoBehaviour
                 line = go.AddComponent<LineRenderer>();
 
             if (line.sharedMaterial == null && shader != null)
-                line.material = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };
+            {
+                _materials[i] = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };
+                line.material = _materials[i];
+            }
 
             line.useWorldSpace = false;
             line.loop = true;
@@ -152,6 +158,15 @@ public class BoardHexPulseEffect : MonoBehaviour
             line.widthMultiplier = baseLineWidth;
 
             _rings[i] = line;
+        }
+    }
+
+    private void OnDestroy()
+    {
+        for (int i = 0; i < _materials.Length; i++)
+        {
+            if (_materials[i] != null)
+                Destroy(_materials[i]);
         }
     }
 }
