@@ -33,7 +33,8 @@ public class BoardEdgeGlowEffect : MonoBehaviour
         _line.positionCount = 6;
         for (int i = 0; i < 6; i++)
         {
-            float a = (60f * i) * Mathf.Deg2Rad;
+            // 本地尖顶角点（30°起），board -30° 后世界空间呈平顶轮廓
+            float a = (30f + 60f * i) * Mathf.Deg2Rad;
             _line.SetPosition(i, new Vector3(Mathf.Cos(a) * outer, Mathf.Sin(a) * outer, -0.03f));
         }
 

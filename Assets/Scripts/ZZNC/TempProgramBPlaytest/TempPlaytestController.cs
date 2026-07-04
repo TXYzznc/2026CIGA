@@ -25,12 +25,16 @@ public struct WallEntry
 public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFactory, IHUDView
 {
     private const float PieceZ = -0.05f;
+    private const float VisualBoardAngleOffset = 30f;
+
+    /// <summary>含边缘半格墙圈的总半径（最外圈被大六边形轮廓裁成半格）。</summary>
+    private int OuterRadius => boardRadius + 1;
 
     /// <summary>根据棋盘半径等比缩放格子大小，使总宽度≈10.15单位保持不变。</summary>
-    private float CellSize => 1.45f * 7f / (2 * boardRadius + 1);
+    private float CellSize => 1.45f * 7f / (2 * OuterRadius + 1);
 
     /// <summary>视觉缩放系数（以 radius=3 为基准）。</summary>
-    private float LayoutScale => 7f / (2 * boardRadius + 1);
+    private float LayoutScale => 7f / (2 * OuterRadius + 1);
 
     [Header("=== 棋盘参数 ===")]
     [SerializeField, Range(1, 10)] private int boardRadius = 3;
@@ -95,6 +99,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     private float _springVelocity;     // 弹簧速度
     private int _targetOrientation;    // 逻辑目标朝向
     private Board.Snapshot _snapshot;
+    private SpriteMask _boardMask;
 
     private static readonly Color HoverCellTint = new Color(1f, 0.92f, 0.55f, 1f);
 
@@ -115,7 +120,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         _targetOrientation = boardOrientation;
         var initGravDir = Hex.OrientationToGravityDir(_targetOrientation);
         var initLocalGrav = HexToLocal(new Hex(0, 0).Neighbor(initGravDir));
-        _visualAngle = Vector2.SignedAngle(initLocalGrav, Vector2.down);
+        _visualAngle = GetVisualBoardAngle(initLocalGrav);
 
         BuildLayout();
     }
@@ -148,7 +153,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         // 弹簧模拟：反方向蓄力 → 加速 → 减速 → 过冲 → 回弹归位
         var targetGravDir = Hex.OrientationToGravityDir(_targetOrientation);
         var targetLocalGrav = HexToLocal(new Hex(0, 0).Neighbor(targetGravDir));
-        var targetAngle = Vector2.SignedAngle(targetLocalGrav, Vector2.down);
+        var targetAngle = GetVisualBoardAngle(targetLocalGrav);
 
         float dt = Time.deltaTime;
         float displacement = Mathf.DeltaAngle(_visualAngle, targetAngle);
@@ -279,8 +284,9 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         _cellObjects.Clear();
         _pieceViews.Clear();
         _board.Clear();
-        _board.SetShape(MakeHexagonShape(boardRadius));
+        _board.SetShape(MakeMaskedShape());
 
+        var origin = new Hex(0, 0);
         var wallSet = new HashSet<Hex>();
         foreach (var w in walls)
         {
@@ -289,13 +295,24 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
             _board.PlaceWall(hex);
         }
 
+        // 可玩区（半径 boardRadius）之外、大六边形轮廓之内的格子一律作为墙
+        foreach (var cell in _board.AllInsideCells())
+        {
+            if (cell.Distance(origin) > boardRadius && wallSet.Add(cell))
+                _board.PlaceWall(cell);
+        }
+
+        EnsureBoardMask();
+
         foreach (var cell in _board.AllInsideCells())
         {
             var isWall = wallSet.Contains(cell);
             var prefab = isWall ? hexWallPrefab : hexCellPrefab;
             var obj = Instantiate(prefab, HexToWorld(cell), Quaternion.identity, _cellsRoot);
-            obj.transform.localScale = Vector3.one * LayoutScale;
+            FitCellVisual(obj);
             obj.name = isWall ? $"Wall_{cell.q}_{cell.r}" : $"Cell_{cell.q}_{cell.r}";
+            foreach (var sr in obj.GetComponentsInChildren<SpriteRenderer>(true))
+                sr.maskInteraction = SpriteMaskInteraction.VisibleInsideMask;
             _cellObjects[cell] = obj;
         }
 
@@ -323,6 +340,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         previewRenderer?.Setup(previewDotPrefab, 0.78f * LayoutScale, _effectsRoot);
 
         RefreshPreview();
+        LogBoardShape();
         Debug.Log($"[Layout] 已加载 {pieces.Count} 枚棋子, {walls.Count} 面墙. 空格=拍击, Q=撤销, Tab=重载布局");
     }
 
@@ -371,7 +389,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         // 拍击前把棋盘视觉一次拉到位（不让动画冻结在半路）
         var snapGravDir = Hex.OrientationToGravityDir(_targetOrientation);
         var snapLocalGrav = HexToLocal(new Hex(0, 0).Neighbor(snapGravDir));
-        _visualAngle = Vector2.SignedAngle(snapLocalGrav, Vector2.down);
+        _visualAngle = GetVisualBoardAngle(snapLocalGrav);
         _springVelocity = 0f;
         transform.rotation = Quaternion.Euler(0f, 0f, _visualAngle);
         boardOrientation = _targetOrientation;
@@ -430,10 +448,15 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     {
         var gravityDir = Hex.OrientationToGravityDir(boardOrientation);
         var localGravity = HexToLocal(new Hex(0, 0).Neighbor(gravityDir));
-        var z = Vector2.SignedAngle(localGravity, Vector2.down);
+        var z = GetVisualBoardAngle(localGravity);
         transform.rotation = Quaternion.Euler(0f, 0f, z);
         RefreshPreview();
         Debug.Log($"[ZZNC.TempProgramB] Board rotated. Orientation={boardOrientation}, rule gravity=D{gravityDir}, visual gravity=screen down.");
+    }
+
+    private static float GetVisualBoardAngle(Vector2 localGravity)
+    {
+        return Vector2.SignedAngle(localGravity, Vector2.down);
     }
 
     private void RefreshPreview()
@@ -502,15 +525,103 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         }
     }
 
-    private static IEnumerable<Hex> MakeHexagonShape(int radius)
+    /// <summary>
+    /// 让格子贴图与点阵精确无缝贴合：
+    /// 六边形长轴 = 2×外接圆半径 = 2×CellSize，据此缩放；
+    /// 长轴竖直的贴图是尖顶（转0°），长轴水平的是平顶（转30°变尖顶）。
+    /// </summary>
+    private void FitCellVisual(GameObject obj)
     {
-        for (var q = -radius; q <= radius; q++)
+        var rotation = VisualBoardAngleOffset;
+        var scale = LayoutScale;
+        var sr = obj.GetComponentInChildren<SpriteRenderer>(true);
+        if (sr != null && sr.sprite != null)
         {
-            var r1 = Math.Max(-radius, -q - radius);
-            var r2 = Math.Min(radius, -q + radius);
-            for (var r = r1; r <= r2; r++)
+            var size = sr.sprite.bounds.size;
+            var pointyTop = size.y >= size.x;
+            rotation = pointyTop ? 0f : 30f;
+            scale = 2f * CellSize / Mathf.Max(size.x, size.y);
+        }
+        obj.transform.localRotation = Quaternion.Euler(0f, 0f, rotation);
+        obj.transform.localScale = Vector3.one * scale;
+    }
+
+    /// <summary>
+    /// 大六边形裁剪遮罩：边穿过最外圈格子中心附近，把它们裁成半格。
+    /// 外接圆半径 = 2 * OuterRadius * CellSize（本地尖顶朝向）。
+    /// </summary>
+    private void EnsureBoardMask()
+    {
+        if (_boardMask == null)
+        {
+            var go = new GameObject("BoardMask");
+            go.transform.SetParent(transform, false);
+            _boardMask = go.AddComponent<SpriteMask>();
+            _boardMask.sprite = GetHexMaskSprite();
+        }
+        // 本地坐标转 30° 变尖顶；棋盘根节点自带 ∓30°+k·60° 的重力对齐旋转，屏幕上恰好呈平顶
+        var circumradius = 2f * OuterRadius * CellSize;
+        _boardMask.transform.localPosition = Vector3.zero;
+        _boardMask.transform.localRotation = Quaternion.Euler(0f, 0f, 30f);
+        // 遮罩精灵外接圆半径 = 1 世界单位，直接用外接圆半径做缩放
+        _boardMask.transform.localScale = Vector3.one * circumradius;
+    }
+
+    private static Sprite _hexMaskSprite;
+
+    private static Sprite GetHexMaskSprite()
+    {
+        if (_hexMaskSprite != null) return _hexMaskSprite;
+
+        const int size = 256;
+        const float circumR = size * 0.5f;
+        var apothem = circumR * Mathf.Sqrt(3f) * 0.5f;
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        var pixels = new Color32[size * size];
+        var half = size * 0.5f;
+        for (var py = 0; py < size; py++)
+        {
+            for (var px = 0; px < size; px++)
             {
-                yield return new Hex(q, r);
+                var x = px + 0.5f - half;
+                var y = py + 0.5f - half;
+                // 平顶六边形内含测试：三条对边轴上的投影都不超过边心距
+                var inside = Mathf.Abs(y) <= apothem
+                          && Mathf.Abs(Mathf.Sqrt(3f) * x + y) * 0.5f <= apothem
+                          && Mathf.Abs(Mathf.Sqrt(3f) * x - y) * 0.5f <= apothem;
+                pixels[py * size + px] = inside ? new Color32(255, 255, 255, 255) : new Color32(0, 0, 0, 0);
+            }
+        }
+        tex.SetPixels32(pixels);
+        tex.Apply(false, true);
+        _hexMaskSprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), circumR);
+        _hexMaskSprite.name = "BoardHexMask";
+        return _hexMaskSprite;
+    }
+
+    /// <summary>
+    /// 生成所有与大六边形遮罩相交/在其内部的格子。
+    /// 遮罩在本地坐标是尖顶六边形（左右为竖直边），边心距 = √3 * OuterRadius * CellSize。
+    /// 与轮廓相交的格子会被遮罩裁成部分格子（半个/三分之一个），拼出大六边形的直边和尖角。
+    /// </summary>
+    private IEnumerable<Hex> MakeMaskedShape()
+    {
+        var apothem = Mathf.Sqrt(3f) * OuterRadius * CellSize;
+        var margin = CellSize; // 格子外接圆半径：中心离轮廓不超过它就可能相交
+        var bound = OuterRadius * 2;
+        const float cos60 = 0.5f;
+        var sin60 = Mathf.Sqrt(3f) * 0.5f;
+        for (var q = -bound; q <= bound; q++)
+        {
+            for (var r = -bound; r <= bound; r++)
+            {
+                var p = HexToLocal(new Hex(q, r));
+                // 尖顶六边形 SDF：三组对边法线方向上的投影
+                var d = Mathf.Max(Mathf.Abs(p.x),
+                        Mathf.Max(Mathf.Abs(cos60 * p.x + sin60 * p.y),
+                                  Mathf.Abs(cos60 * p.x - sin60 * p.y)));
+                if (d <= apothem + margin)
+                    yield return new Hex(q, r);
             }
         }
     }
@@ -524,19 +635,23 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
 
     // ── 鼠标悬浮棋子名称提示 ────────────────────────────────────
 
-    private static readonly Dictionary<PieceType, string> PieceDisplayNames = new Dictionary<PieceType, string>
+    private void LogBoardShape()
     {
-        { PieceType.Normal,    "普通棋" },
-        { PieceType.Score,     "得分棋" },
-        { PieceType.Explosion, "爆炸棋" },
-        { PieceType.Split,     "分裂棋" },
-        { PieceType.Bounce,    "弹跳棋" },
-        { PieceType.Stomach,   "胃袋棋" },
-        { PieceType.Devour,    "吞噬棋" },
-        { PieceType.Turn,      "转向棋" },
-        { PieceType.Swap,      "交换棋" },
-        { PieceType.Whirlwind, "旋风棋" },
-    };
+        var cells = _board.AllInsideCells();
+        if (cells.Count == 0) return;
+
+        var min = new Vector2(float.PositiveInfinity, float.PositiveInfinity);
+        var max = new Vector2(float.NegativeInfinity, float.NegativeInfinity);
+        foreach (var cell in cells)
+        {
+            var world = HexToWorld(cell);
+            var p = new Vector2(world.x, world.y);
+            min = Vector2.Min(min, p);
+            max = Vector2.Max(max, p);
+        }
+
+        Debug.Log($"[Layout.Shape] cells={cells.Count}, radius={boardRadius}, cellSize={CellSize:F3}, visualOffset={VisualBoardAngleOffset:F1}, rotationZ={transform.eulerAngles.z:F1}, worldBounds=({min.x:F2},{min.y:F2})..({max.x:F2},{max.y:F2})");
+    }
 
     private void EnsureHoverTooltip()
     {
@@ -589,35 +704,90 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         return component != null && component.gameObject.scene.IsValid() && component.gameObject.scene.isLoaded;
     }
 
-    private static string GetPieceTitle(PieceType type) => type switch
-    {
-        PieceType.Normal => "普通棋",
-        PieceType.Score => "得分棋",
-        PieceType.Explosion => "爆炸棋",
-        PieceType.Split => "分裂棋",
-        PieceType.Bounce => "弹跳棋",
-        PieceType.Stomach => "胃袋棋",
-        PieceType.Devour => "吞噬棋",
-        PieceType.Turn => "转向棋",
-        PieceType.Swap => "交换棋",
-        PieceType.Whirlwind => "旋风棋",
-        _ => "棋子",
-    };
+    private static readonly Dictionary<PieceType, (string Name, string Description)> PieceTooltipTexts =
+        new Dictionary<PieceType, (string Name, string Description)>
+        {
+            {
+                PieceType.Normal,
+                (
+                    "普通棋",
+                    "主动撞到其他棋子时获得2分；被爆炸成功推动或推出棋盘时也获得2分，若推动后再次撞击，可再获得2分。"
+                )
+            },
+            {
+                PieceType.Score,
+                (
+                    "得分棋",
+                    "每枚得分棋独立计数：本次拍击内第n次受到碰撞、推动、挤压、反弹、转向、交换或旋风位移时，获得2^n分；不同效果可分别计数，下次拍击重置。"
+                )
+            },
+            {
+                PieceType.Explosion,
+                (
+                    "爆炸棋",
+                    "被撞后自身保留，将六个相邻棋子分别向外推动1格；每成功推动或推出1枚获得2分，阻挡时不移动；被推动棋子可继续产生碰撞。"
+                )
+            },
+            {
+                PieceType.Split,
+                (
+                    "分裂棋",
+                    "被撞后自身消失，并在撞击方向左右各60°各生成1枚分裂棋；目标被占用时沿生成方向推开整列棋子，挤动可产生碰撞且不能推出棋盘；无法推开则生成在最近空格，无空格时失败；不直接得分。"
+                )
+            },
+            {
+                PieceType.Bounce,
+                (
+                    "反弹棋",
+                    "被撞后自身保留，将撞击者沿来路反弹1格；目标格被棋子、墙体或边界阻挡时不移动，反弹成功后可继续产生碰撞；不直接得分。"
+                )
+            },
+            {
+                PieceType.Stomach,
+                (
+                    "胃袋棋",
+                    "被撞后沿撞击者原方向持续前进，吞掉路径上的所有棋子，直到墙体或棋盘边缘；每吞1枚获得2分，被吞棋子不触发能力，吞噬过程不产生碰撞，胃袋棋最终保留。"
+                )
+            },
+            {
+                PieceType.Devour,
+                (
+                    "吞噬棋",
+                    "被撞后吞掉六个相邻格中的所有棋子，包括撞击者；每吞1枚获得3分，被吞棋子不触发能力，结算后吞噬棋自身消失。"
+                )
+            },
+            {
+                PieceType.Turn,
+                (
+                    "转向棋",
+                    "被撞后自身保留，使撞击者顺时针转向60°并移动1格；目标格被棋子、墙体或边界阻挡时不转向并停住，成功移动后可继续产生碰撞；不直接得分。"
+                )
+            },
+            {
+                PieceType.Swap,
+                (
+                    "交换棋",
+                    "被撞后与撞击者交换位置；交换完成后，撞击者沿原移动方向继续移动到最远位置，并正常产生后续碰撞；交换棋不直接得分。"
+                )
+            },
+            {
+                PieceType.Whirlwind,
+                (
+                    "旋风棋",
+                    "被撞后自身不动，使周围非墙格中的棋子与空位顺时针轮换1格，跳过墙体和棋盘外位置；移动棋子按旧位置到新位置的方向继续检查碰撞；旋风棋不直接得分。"
+                )
+            },
+        };
 
-    private static string GetPieceDescription(PieceType type) => type switch
+    private static string GetConfiguredPieceTitle(PieceType type)
     {
-        PieceType.Normal => "基础棋子，沿重力方向移动并参与碰撞。",
-        PieceType.Score => "碰撞触发得分。",
-        PieceType.Explosion => "碰撞后向周围推开棋子。",
-        PieceType.Split => "碰撞后尝试生成新的棋子。",
-        PieceType.Bounce => "碰撞后反向弹跳。",
-        PieceType.Stomach => "吞入前方棋子并保留在棋盘内。",
-        PieceType.Devour => "吞噬目标棋子。",
-        PieceType.Turn => "碰撞后改变移动方向。",
-        PieceType.Swap => "与目标棋子交换位置。",
-        PieceType.Whirlwind => "影响周围一圈棋子的站位。",
-        _ => null,
-    };
+        return PieceTooltipTexts.TryGetValue(type, out var text) ? text.Name : "棋子";
+    }
+
+    private static string GetConfiguredPieceDescription(PieceType type)
+    {
+        return PieceTooltipTexts.TryGetValue(type, out var text) ? text.Description : null;
+    }
 
     private void UpdateHoverTooltip()
     {
@@ -673,7 +843,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
             var piece = _board.GetPiece(hex);
             if (piece != null)
             {
-                pieceTooltip.Show(GetPieceTitle(piece.Type), GetPieceDescription(piece.Type));
+                pieceTooltip.Show(GetConfiguredPieceTitle(piece.Type), GetConfiguredPieceDescription(piece.Type));
                 return;
             }
         }
