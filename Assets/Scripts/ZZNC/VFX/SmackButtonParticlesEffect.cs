@@ -24,11 +24,13 @@ public class SmackButtonParticlesEffect : MonoBehaviour
     [SerializeField, Range(0.1f, 20f)] private float worldDepth = 5f;
 
     private ParticleSystem _ps;
+    private Canvas _canvas;
 
     private void Awake()
     {
         if (buttonRect == null)
             buttonRect = GetComponentInParent<RectTransform>();
+        _canvas = buttonRect != null ? buttonRect.GetComponentInParent<Canvas>() : GetComponentInParent<Canvas>();
 
         _ps = GetComponent<ParticleSystem>();
         if (_ps == null)
@@ -51,11 +53,16 @@ public class SmackButtonParticlesEffect : MonoBehaviour
     {
         var cam = Camera.main;
         if (cam == null || buttonRect == null) return;
+        if (_canvas == null)
+            _canvas = buttonRect.GetComponentInParent<Canvas>();
 
         // rect.center 是本地空间下的视觉中心（与 pivot 无关）
         // TransformPoint 转到世界空间后再映射屏幕坐标，Overlay Canvas 传 null camera
         Vector3 rectWorldCenter = buttonRect.TransformPoint(buttonRect.rect.center);
-        Vector2 screenPos = RectTransformUtility.WorldToScreenPoint(null, rectWorldCenter);
+        var uiCamera = _canvas != null && _canvas.renderMode != RenderMode.ScreenSpaceOverlay
+            ? _canvas.worldCamera
+            : null;
+        Vector2 screenPos = RectTransformUtility.WorldToScreenPoint(uiCamera, rectWorldCenter);
 
         // worldDepth：相机到粒子的距离（沿 forward 轴）
         float z = cam.nearClipPlane + worldDepth;

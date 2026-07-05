@@ -34,13 +34,14 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     private int OuterRadius => boardRadius + 1;
 
     /// <summary>根据棋盘半径等比缩放格子大小，使总宽度≈10.15单位保持不变。</summary>
-    private float CellSize => 1.45f * 7f / (2 * OuterRadius + 1);
+    private float CellSize => boardCircumradius / (2f * OuterRadius);
 
     /// <summary>视觉缩放系数（以 radius=3 为基准）。</summary>
-    private float LayoutScale => 7f / (2 * OuterRadius + 1);
+    private float LayoutScale => CellSize / 1.45f;
 
     [Header("=== 棋盘参数 ===")]
     [SerializeField, Range(1, 10)] private int boardRadius = 3;
+    [SerializeField, Min(0.1f)] private float boardCircumradius = 7f;
 
     [Header("=== 动画速度 ===")]
     [SerializeField, Range(0.1f, 0.5f)] private float moveDuration = 0.18f;
@@ -52,6 +53,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
 
     [Header("=== 棋盘 Prefab（拖一次）===")]
     [SerializeField] private GameObject hexCellPrefab;
+    [SerializeField] private GameObject hexClippedWallPrefab;
     [SerializeField] private GameObject hexWallPrefab;
     [SerializeField] private GameObject previewDotPrefab;
     [SerializeField] private Material pieceMaterial;
@@ -102,7 +104,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     [SerializeField] private bool placeGameplayCanvasBehindBoard = true;
     [SerializeField, Min(0.01f)] private float gameplayCanvasBehindBoardOffset = 5f;
     [SerializeField] private int modalCanvasSortingOrder = 1000;
-    [SerializeField, Min(0f)] private float choicePopupDelay = 1f;
+    [SerializeField, Min(0f)] private float choicePopupDelay = 0.3f;
 
     [Header("Runtime Info（只读）")]
     [SerializeField] private int boardOrientation;
@@ -148,9 +150,11 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     private const int HexMaskTextureSize = 1024;
     private const float HexMaskAlphaCutoff = 0.2f;
     private const float HexMaskAntialiasPixels = 1.5f;
+    private const float DefaultBoardCircumradius = 7f;
 
     private void Awake()
     {
+        NormalizeBoardSizeSettings();
         EnsureRoots();
         ConfigureGameplayCanvasLayering();
         MoveModalViewsToOverlayCanvas();
@@ -201,6 +205,17 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
             StartNewGame();
         else
             ShowMainMenu();
+    }
+
+    private void OnValidate()
+    {
+        NormalizeBoardSizeSettings();
+    }
+
+    private void NormalizeBoardSizeSettings()
+    {
+        if (boardCircumradius <= 0f)
+            boardCircumradius = DefaultBoardCircumradius;
     }
 
     private void OnDestroy()
@@ -751,7 +766,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         foreach (var cell in _board.AllInsideCells())
         {
             var isWall = wallSet.Contains(cell);
-            var prefab = isWall ? hexWallPrefab : hexCellPrefab;
+            var prefab = GetCellPrefab(cell, isWall);
             var obj = Instantiate(prefab, HexToWorld(cell), Quaternion.identity, _cellsRoot);
             FitCellVisual(obj);
             obj.name = isWall ? $"Wall_{cell.q}_{cell.r}" : $"Cell_{cell.q}_{cell.r}";
@@ -1003,16 +1018,27 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
             foreach (var entry in pool)
             {
                 if (!Enum.TryParse(entry.pieceType, out PieceType type)) continue;
-                result.Add(new ChoiceOption(type.ToString(), type.ToString(), string.Empty, Mathf.Max(0, entry.weight)));
+                result.Add(BuildChoiceOption(type, Mathf.Max(0, entry.weight)));
             }
         }
 
         if (result.Count == 0)
         {
             foreach (PieceType type in Enum.GetValues(typeof(PieceType)))
-                result.Add(new ChoiceOption(type.ToString(), type.ToString(), string.Empty, 1f));
+                result.Add(BuildChoiceOption(type, 1f));
         }
         return result;
+    }
+
+    private ChoiceOption BuildChoiceOption(PieceType type, float weight)
+    {
+        return new ChoiceOption(
+            type.ToString(),
+            GetConfiguredPieceTitle(type),
+            GetConfiguredPieceDescription(type) ?? string.Empty,
+            weight,
+            GetPieceSprite(type),
+            type);
     }
 
     private IEnumerator RunChoiceSequence(int count, Action onComplete)
@@ -1102,15 +1128,25 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
 
     private bool ValidateBoardPrefabReferences()
     {
-        if (hexCellPrefab != null && hexWallPrefab != null)
+        if (hexCellPrefab != null && hexClippedWallPrefab != null && hexWallPrefab != null)
             return true;
 
         if (hexCellPrefab == null)
             Debug.LogError("[ZZNC.TempProgramB] hexCellPrefab is not assigned on TempPlaytestController.");
+        if (hexClippedWallPrefab == null)
+            Debug.LogError("[ZZNC.TempProgramB] hexClippedWallPrefab is not assigned on TempPlaytestController.");
         if (hexWallPrefab == null)
             Debug.LogError("[ZZNC.TempProgramB] hexWallPrefab is not assigned on TempPlaytestController.");
 
         return false;
+    }
+
+    private GameObject GetCellPrefab(Hex cell, bool isWall)
+    {
+        if (!isWall)
+            return hexCellPrefab;
+
+        return IsClippedEdgeCell(cell) ? hexClippedWallPrefab : hexWallPrefab;
     }
 
     private void ShowLevelFail()
