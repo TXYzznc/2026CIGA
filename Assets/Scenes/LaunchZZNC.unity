@@ -846,7 +846,6 @@ GameObject:
   m_Component:
   - component: {fileID: 542262502}
   - component: {fileID: 542262501}
-  - component: {fileID: 542262500}
   m_Layer: 0
   m_Name: EffectManager
   m_TagString: Untagged
@@ -854,23 +853,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &542262500
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 542262499}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a2c62ecd0da7f0b478d665d2738790e1, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  impactVFX: {fileID: 542262501}
-  screenShake: {fileID: 1987281680}
-  chromaticAberration: {fileID: 1987281679}
-  buttonParticles: {fileID: 692097421}
-  testBoardCenter: {x: 0, y: 0, z: 0}
 --- !u!114 &542262501
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1239,6 +1221,13 @@ MonoBehaviour:
   pieceTooltip: {fileID: 7985042429747471661, guid: 5c8e1e2dc500e0e48a3543a76d9a4ed5, type: 3}
   tooltipHoverDelay: 0.5
   comboPulse: {fileID: 896763572}
+  comboPopupImageTemplate: {fileID: 0}
+  comboPopupSprite: {fileID: 21300000, guid: 122e73e43e6370048af0306c6dfaa575, type: 3}
+  comboPopupAnchoredPosition: {x: -300, y: -220}
+  comboPopupSize: {x: 360, y: 160}
+  comboPopupThreshold: 3
+  comboPopupPeakScale: 2.1
+  comboPopupSettleScale: 1.25
   boardOrientation: 0
 --- !u!4 &635942666
 Transform:

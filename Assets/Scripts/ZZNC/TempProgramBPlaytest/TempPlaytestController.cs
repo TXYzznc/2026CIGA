@@ -21,7 +21,7 @@ public struct PieceWeight
 }
 
 /// <summary>
-/// 在 Inspector 里拖 Sprite + 配棋子列表，运行时按 Tab 键热重载布局。
+/// Program-B board controller: builds the runtime board, drives input, flow, and UI binding.
 /// </summary>
 public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFactory, IHUDView
 {
@@ -98,6 +98,13 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     [SerializeField] private PieceTooltip pieceTooltip;
     [SerializeField, Range(0f, 2f)] private float tooltipHoverDelay = 0.5f;
     [SerializeField] private BoardHexPulseEffect comboPulse;
+    [SerializeField] private Image comboPopupImageTemplate;
+    [SerializeField] private Sprite comboPopupSprite;
+    [SerializeField] private Vector2 comboPopupAnchoredPosition = new Vector2(-300f, -220f);
+    [SerializeField] private Vector2 comboPopupSize = new Vector2(360f, 160f);
+    [SerializeField, Min(0)] private int comboPopupThreshold = 3;
+    [SerializeField, Min(1f)] private float comboPopupPeakScale = 2.1f;
+    [SerializeField, Min(0.1f)] private float comboPopupSettleScale = 1.25f;
 
     [Header("=== 拍击动画 ===")]
     [SerializeField] private GameObject smackAnimObj1;
@@ -146,7 +153,6 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     private float _visualAngle;        // 当前视觉角度（弹簧驱动）
     private float _springVelocity;     // 弹簧速度
     private int _targetOrientation;    // 逻辑目标朝向
-    private Board.Snapshot _snapshot;
     private SpriteMask _boardMask;
     private ZZNCLevelConfigTable _levelConfig;
     private List<ZZNCLevelRoundConfig> _currentLevelRounds = new List<ZZNCLevelRoundConfig>();
@@ -176,6 +182,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         ConfigureGameplayCanvasLayering();
         MoveModalViewsToOverlayCanvas();
         EnsureHoverTooltip();
+        HideComboPopupTemplate();
         _resolver = gameObject.GetComponent<SmackResolver>();
         if (_resolver == null)
             _resolver = gameObject.AddComponent<SmackResolver>();
@@ -323,12 +330,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         if (Input.GetKeyDown(KeyCode.Space))
             OnSmackRequest();
 
-        if (Input.GetKeyDown(KeyCode.Q))
-            UndoLastSmack();
-
         UpdateHoverTooltip();
-        if (Input.GetKeyDown(KeyCode.Tab))
-            RestartCurrentLevel();
     }
 
     private void RotateTarget(int direction)
@@ -399,6 +401,8 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         hudView?.ShakeScore(shake);
         _comboCount++;
         comboPulse?.Pulse(_comboCount);
+        if (_comboCount > comboPopupThreshold)
+            ShowComboPopup(_comboCount);
         Debug.Log($"[ZZNC.TempProgramB] Score +{scoreDelta}, Combo {_comboCount}, At {worldPos}");
 
         var go = new GameObject($"ScorePopup_{scoreDelta}");
@@ -453,6 +457,124 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
 
         go.transform.localRotation = Quaternion.identity;
         Destroy(go, 0.1f);
+    }
+
+    private void ShowComboPopup(int comboCount)
+    {
+        var template = comboPopupImageTemplate;
+        GameObject go;
+        RectTransform rect;
+        CanvasGroup group;
+
+        if (template != null)
+        {
+            go = Instantiate(template.gameObject, template.transform.parent);
+            rect = (RectTransform)go.transform;
+            go.SetActive(true);
+            go.transform.SetAsLastSibling();
+
+            group = go.GetComponent<CanvasGroup>();
+            if (group == null)
+                group = go.AddComponent<CanvasGroup>();
+
+            var image = go.GetComponent<Image>();
+            if (image != null)
+                image.raycastTarget = false;
+        }
+        else
+        {
+            var canvas = EnsureRuntimeOverlayCanvas();
+            if (canvas == null)
+                return;
+
+            go = new GameObject($"ComboPopup_{comboCount}", typeof(RectTransform), typeof(CanvasGroup), typeof(Image));
+            go.transform.SetParent(canvas.transform, false);
+            go.transform.SetAsLastSibling();
+
+            rect = (RectTransform)go.transform;
+            rect.anchorMin = Vector2.one;
+            rect.anchorMax = Vector2.one;
+            rect.pivot = Vector2.one;
+            rect.anchoredPosition = comboPopupAnchoredPosition;
+            rect.sizeDelta = comboPopupSize;
+
+            group = go.GetComponent<CanvasGroup>();
+
+            var image = go.GetComponent<Image>();
+            image.sprite = comboPopupSprite;
+            image.preserveAspect = true;
+            image.raycastTarget = false;
+            image.color = Color.white;
+
+            if (comboPopupSprite == null)
+            {
+                Destroy(image);
+                var text = go.AddComponent<TextMeshProUGUI>();
+                text.text = "COMBO";
+                text.alignment = TextAlignmentOptions.Center;
+                text.fontStyle = FontStyles.Bold;
+                text.fontSize = 88f;
+                text.color = new Color(1f, 0.92f, 0.24f, 1f);
+                text.raycastTarget = false;
+            }
+        }
+
+        if (rect == null || group == null)
+            return;
+
+        group.alpha = 1f;
+        group.blocksRaycasts = false;
+
+        StartCoroutine(AnimateComboPopup(go, rect, group, comboCount));
+    }
+
+    private IEnumerator AnimateComboPopup(GameObject go, RectTransform rect, CanvasGroup group, int comboCount)
+    {
+        Vector3 templateScale = rect.localScale;
+        Vector2 templatePosition = rect.anchoredPosition;
+        float comboBoost = Mathf.Min(0.35f, (comboCount - comboPopupThreshold) * 0.035f);
+        float peakScale = comboPopupPeakScale + comboBoost;
+        float settleScale = comboPopupSettleScale + comboBoost * 0.5f;
+        const float duration = 0.68f;
+
+        for (var t = 0f; t < duration; t += Time.deltaTime)
+        {
+            float normalized = t / duration;
+            float scale;
+            if (normalized < 0.22f)
+            {
+                float p = Mathf.SmoothStep(0f, 1f, normalized / 0.22f);
+                scale = Mathf.Lerp(0.35f, peakScale, p);
+            }
+            else if (normalized < 0.46f)
+            {
+                float p = Mathf.SmoothStep(0f, 1f, (normalized - 0.22f) / 0.24f);
+                scale = Mathf.Lerp(peakScale, settleScale, p);
+            }
+            else
+            {
+                float pulse = Mathf.Sin((normalized - 0.46f) * Mathf.PI * 2f) * 0.05f;
+                scale = settleScale + pulse;
+            }
+
+            float lift = Mathf.Sin(Mathf.Clamp01(normalized) * Mathf.PI) * 18f;
+            rect.localScale = templateScale * Mathf.Max(0.01f, scale);
+            rect.localRotation = Quaternion.identity;
+            rect.anchoredPosition = templatePosition + new Vector2(0f, lift);
+
+            if (group != null)
+                group.alpha = normalized < 0.72f ? 1f : Mathf.Lerp(1f, 0f, (normalized - 0.72f) / 0.28f);
+
+            yield return null;
+        }
+
+        Destroy(go);
+    }
+
+    private void HideComboPopupTemplate()
+    {
+        if (comboPopupImageTemplate != null)
+            comboPopupImageTemplate.gameObject.SetActive(false);
     }
 
     private void EnsureRoots()
@@ -927,7 +1049,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
 
         RefreshPreview();
         LogBoardShape();
-        Debug.Log($"[Layout] 已加载 {pieces.Count} 枚棋子, 自动生成 {wallSet.Count} 个残缺边缘墙体. 空格=拍击, Q=撤销, Tab=重载布局");
+        Debug.Log($"[Layout] 已加载 {pieces.Count} 枚棋子, 自动生成 {wallSet.Count} 个残缺边缘墙体. 空格=拍击");
     }
 
     private TempPieceView CreatePieceView(PieceType type, Hex pos)
@@ -1006,7 +1128,6 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         HideChoicePanel();
         _isResolving = false;
         _waitingForChoice = false;
-        _snapshot = null;
         StartLevel(currentLevelId);
     }
 
@@ -1028,7 +1149,6 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         _gameActive = false;
         _isResolving = false;
         _waitingForChoice = false;
-        _snapshot = null;
         _currentRound = null;
         _currentLevelRounds = null;
         currentLevelId = FirstLevelId;
@@ -1340,9 +1460,6 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
 
     private void ExecuteCurrentSmack()
     {
-        // 保存快照（可在拍击过程中按 Q 回到此状态）
-        _snapshot = _board.Capture();
-
         // 拍击前把棋盘视觉一次拉到位（不让动画冻结在半路）
         var snapGravDir = Hex.OrientationToGravityDir(_targetOrientation);
         var snapLocalGrav = HexToLocal(new Hex(0, 0).Neighbor(snapGravDir));
@@ -1409,39 +1526,6 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
             AddWallsAfterRound(_currentRound.addWallCountOnPass);
             StartRound(currentRoundIndex, false);
         }));
-    }
-
-    private void UndoLastSmack()
-    {
-        if (_snapshot == null) return;
-
-        // 停止正在播放的动画协程
-        _resolver.StopAllCoroutines();
-
-        _isResolving = false;
-        ClearPreview();
-
-        // 销毁当前所有棋子视图
-        ClearChildren(_piecesRoot);
-        _pieceViews.Clear();
-
-        // 恢复棋盘数据（保留墙体/形状）
-        _board.Restore(_snapshot);
-
-        // 为恢复后的棋子重建视图
-        foreach (var p in _board.AllPieces())
-        {
-            var view = CreatePieceView(p.Type, p.Position);
-            view.PlaySpawn();
-            p.View = view;
-            _pieceViews[p] = view;
-        }
-
-        // 把布局快照设为 null，避免连续 Undo
-        _snapshot = null;
-
-        RefreshPreview();
-        Debug.Log($"[ZZNC.TempProgramB] Undo restored {_board.AllPieces().Count} pieces.");
     }
 
     private void ApplyBoardRotation()
