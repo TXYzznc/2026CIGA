@@ -55,7 +55,6 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     [SerializeField] private GameObject hexCellPrefab;
     [SerializeField] private GameObject hexClippedWallPrefab;
     [SerializeField] private GameObject hexWallPrefab;
-    [SerializeField] private GameObject previewDotPrefab;
     [SerializeField] private Material pieceMaterial;
 
     [Header("=== 棋子精灵（10种，拖上去）===")]
@@ -924,7 +923,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         boardEdgeGlow?.Setup(OuterRadius, CellSize);
         EnsureComboPulse();
         comboPulse?.Setup(OuterRadius, CellSize);
-        previewRenderer?.Setup(previewDotPrefab, 0.78f * LayoutScale, _effectsRoot);
+        previewRenderer?.Setup(0.78f * LayoutScale, _effectsRoot);
 
         RefreshPreview();
         LogBoardShape();
@@ -1013,7 +1012,43 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
 
     private void ReturnToMainMenu()
     {
+        ResetGameToInitialState();
         ShowMainMenu();
+    }
+
+    private void ResetGameToInitialState()
+    {
+        StopAllCoroutines();
+        _resolver?.StopAllCoroutines();
+        HideChoicePanel();
+        pieceTooltip?.Hide();
+        ClearHoveredCell();
+        ClearPreview();
+
+        _gameActive = false;
+        _isResolving = false;
+        _waitingForChoice = false;
+        _snapshot = null;
+        _currentRound = null;
+        _currentLevelRounds = null;
+        currentLevelId = FirstLevelId;
+        currentRoundIndex = 1;
+        remainingSmacks = 0;
+        currentScore = 0;
+
+        _choiceSeed.Clear();
+        _board.Clear();
+        _cellObjects.Clear();
+        _pieceViews.Clear();
+        ClearChildren(_cellsRoot);
+        ClearChildren(_piecesRoot);
+        ClearChildren(_effectsRoot);
+
+        hudView?.SetScoreImmediate(0);
+        hudView?.SetTargetScore(0);
+        hudView?.SetRemainingSmacks(0, 0);
+        hudView?.SetSmackButtonInteractable(false);
+        boardEdgeGlow?.SetSpeed(0f);
     }
 
     private void ShowMainMenu()
@@ -1796,7 +1831,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
                 PieceType.Stomach,
                 (
                     "胃袋棋",
-                    "沿撞击方向前进，吞噬路径上所有棋子，每吞 1 枚 +2 分，被吞棋不触发能力，最终保留。"
+                    "自身移动时吞噬路径上触碰到的所有棋子，吞噬得分为 1、1、2、3、5...，被吞棋不触发能力，最终保留。"
                 )
             },
             {

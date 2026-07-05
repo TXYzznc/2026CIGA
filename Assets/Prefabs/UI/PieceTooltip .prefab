@@ -180,7 +180,7 @@ MonoBehaviour:
   panel: {fileID: 430938583037895044}
   nameText: {fileID: 5558401598230490941}
   descText: {fileID: 1213305286801300309}
-  offset: {x: 14, y: -14}
+  offset: {x: -120, y: -14}
 --- !u!1 &7843181415716544132
 GameObject:
   m_ObjectHideFlags: 0

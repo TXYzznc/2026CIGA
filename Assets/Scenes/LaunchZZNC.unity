@@ -1,4 +1,4 @@
-%YAML 1.1
+﻿%YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
 --- !u!29 &1
 OcclusionCullingSettings:
@@ -1190,7 +1190,6 @@ MonoBehaviour:
   springDamping: 25
   hexCellPrefab: {fileID: 884512862989034056, guid: 46d6f918935eaac43b500c1e44305337, type: 3}
   hexWallPrefab: {fileID: 2006094445100370757, guid: 72ac4dac52cb33243a7f84205434dc05, type: 3}
-  previewDotPrefab: {fileID: 7560920155644563363, guid: dec6b5cbc6ad6dc4cb10fdd90cf20352, type: 3}
   pieceMaterial: {fileID: 2100000, guid: 8fdbc2da5273ca64eaddc09db6a75915, type: 2}
   spriteNormal: {fileID: 21300000, guid: 3f15274d4f120bf44ac8d86398180353, type: 3}
   spriteScore: {fileID: 21300000, guid: deb819dd24612d94b868342069294d35, type: 3}

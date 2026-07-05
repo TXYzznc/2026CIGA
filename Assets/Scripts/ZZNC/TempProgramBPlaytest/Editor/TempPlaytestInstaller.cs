@@ -33,7 +33,6 @@ public static class TempPlaytestInstaller
         Assign(controller, "hexCellPrefab", hexCellPrefab);
         Assign(controller, "hexClippedWallPrefab", hexClippedWallPrefab);
         Assign(controller, "hexWallPrefab", hexWallPrefab);
-        Assign(controller, "previewDotPrefab", Load<GameObject>("Assets/Prefabs/ZZNC/ZZNC_PreviewDot.prefab"));
         Assign(controller, "normalPieceSprite", Load<Sprite>("Assets/Resources/Sprite/ZZNC/Piece_Normal.png"));
         Assign(controller, "scorePieceSprite", Load<Sprite>("Assets/Resources/Sprite/ZZNC/Piece_Score.png"));
         Assign(controller, "explosionPieceSprite", Load<Sprite>("Assets/Resources/Sprite/ZZNC/Piece_Explosion.png"));

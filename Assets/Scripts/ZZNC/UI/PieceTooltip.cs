@@ -11,7 +11,7 @@ public class PieceTooltip : MonoBehaviour
     [SerializeField] private RectTransform panel;
     [SerializeField] private TextMeshProUGUI nameText;
     [SerializeField] private TextMeshProUGUI descText;
-    [SerializeField] private Vector2 offset = new Vector2(14f, -14f);
+    [SerializeField] private Vector2 offset = new Vector2(-120f, -14f);
 
     private Canvas _canvas;
 

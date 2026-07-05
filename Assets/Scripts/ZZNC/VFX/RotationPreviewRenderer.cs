@@ -12,15 +12,15 @@ using UnityEngine;
 public class RotationPreviewRenderer : MonoBehaviour
 {
     [Header("Ghost 棋子")]
-    [SerializeField] private Color ghostColor = new Color(0.45f, 0.82f, 1f, 0.38f);
+    [SerializeField] private Color ghostColor = new Color(0.45f, 0.82f, 1f, 0.2f);
     [SerializeField, Range(0.5f, 1.5f)] private float ghostScaleMultiplier = 1f;
 
     [Header("碰撞目标描边")]
     [SerializeField] private Color hitRingColor = new Color(1f, 0.52f, 0.08f, 0.55f);
     [SerializeField, Range(1f, 2.5f)] private float hitRingScale = 1.45f;
+    [SerializeField, Range(0.01f, 0.12f)] private float hitRingLineWidth = 0.045f;
 
     // ── 运行时引用，由 Setup() 注入 ────────────────────────────────
-    private GameObject _dotPrefab;
     private float _pieceScale;
     private Transform _root;
 
@@ -29,13 +29,11 @@ public class RotationPreviewRenderer : MonoBehaviour
 
     /// <summary>
     /// BuildLayout 完成后调用一次，注入依赖。
-    /// dotPrefab：现有 previewDotPrefab（带 SpriteRenderer 的圆点 prefab）
     /// pieceScale：棋子 GameObject 的 localScale 大小（用于 ghost 对齐）
     /// root：特效 Transform 父节点
     /// </summary>
-    public void Setup(GameObject dotPrefab, float pieceScale, Transform root)
+    public void Setup(float pieceScale, Transform root)
     {
-        _dotPrefab = dotPrefab;
         _pieceScale = pieceScale;
         _root = root;
     }
@@ -118,14 +116,31 @@ public class RotationPreviewRenderer : MonoBehaviour
 
     private GameObject CreateHitRing(Vector3 worldPos)
     {
-        if (_dotPrefab == null) return null;
-
-        var go = Instantiate(_dotPrefab, worldPos + new Vector3(0f, 0f, -0.05f), Quaternion.identity, _root);
+        const int SegmentCount = 48;
+        var go = new GameObject("Preview_HitRing");
+        go.transform.SetParent(_root);
         go.name = "Preview_HitRing";
-        go.transform.localScale = Vector3.one * _pieceScale * hitRingScale;
+        go.transform.position = worldPos + new Vector3(0f, 0f, -0.05f);
 
-        if (go.TryGetComponent<SpriteRenderer>(out var sr))
-            sr.color = hitRingColor;
+        var ring = go.AddComponent<LineRenderer>();
+        ring.useWorldSpace = false;
+        ring.loop = true;
+        ring.positionCount = SegmentCount;
+        ring.startWidth = hitRingLineWidth;
+        ring.endWidth = hitRingLineWidth;
+        ring.sortingOrder = 3;
+        var material = new Material(Shader.Find("Sprites/Default"));
+        ring.material = material;
+        ring.startColor = hitRingColor;
+        ring.endColor = hitRingColor;
+        go.AddComponent<MaterialAutoDestroy>().Track(material);
+
+        float radius = _pieceScale * hitRingScale * 0.5f;
+        for (var i = 0; i < SegmentCount; i++)
+        {
+            float angle = i * Mathf.PI * 2f / SegmentCount;
+            ring.SetPosition(i, new Vector3(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius, 0f));
+        }
 
         return go;
     }

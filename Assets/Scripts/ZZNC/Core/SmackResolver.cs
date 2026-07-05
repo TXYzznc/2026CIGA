@@ -63,11 +63,13 @@ public class SmackResolver : MonoBehaviour
         // 克隆棋盘状态做模拟
         var simPositions = new Dictionary<int, Hex>(); // pieceId → simPos
         var simGrid = new Dictionary<Hex, int>();       // simPos → pieceId
+        var simTypes = new Dictionary<int, PieceType>();
 
         foreach (var p in _board.AllPieces())
         {
             simPositions[p.ID] = p.Position;
             simGrid[p.Position] = p.ID;
+            simTypes[p.ID] = p.Type;
         }
 
         // 按轨道顺序处理
@@ -75,16 +77,21 @@ public class SmackResolver : MonoBehaviour
         foreach (var pieceId in ordered)
         {
             if (!simPositions.TryGetValue(pieceId, out var from)) continue;
-            var to = CalcFarthest(from, gravDir, simGrid, pieceId, _board);
+            bool isStomach = simTypes.TryGetValue(pieceId, out var pieceType) && pieceType == PieceType.Stomach;
+            var to = CalcFarthest(from, gravDir, simGrid, pieceId, _board, isStomach);
             if (to != from)
             {
                 simGrid.Remove(from);
+                if (isStomach)
+                    RemoveSimulatedStomachPath(from, to, gravDir, simGrid, simPositions, pieceId);
                 simGrid[to] = pieceId;
                 simPositions[pieceId] = to;
             }
+            if (!simPositions.ContainsKey(pieceId)) continue;
             result.FinalPositions[pieceId] = simPositions[pieceId];
 
             // 检查是否碰撞
+            if (isStomach) continue;
             var front = simPositions[pieceId].Neighbor(gravDir);
             if (simGrid.ContainsKey(front))
             {
@@ -310,7 +317,7 @@ public class SmackResolver : MonoBehaviour
         {
             // 爆炸推动：只移 1 格
             var next = piece.Position.Neighbor(ev.Direction);
-            if (_board.GetContent(next) != CellContent.Empty)
+            if (!CanMoveInto(piece, _board.GetContent(next)))
             {
                 // 推动失败，ToPos=FromPos，动画时播震动
                 ev.ToPos = piece.Position;
@@ -321,7 +328,9 @@ public class SmackResolver : MonoBehaviour
         else
         {
             // 重力移动：移到最远合法位置
-            to = CalcFarthestOnBoard(piece.Position, ev.Direction);
+            to = piece.Type == PieceType.Stomach
+                ? CalcFarthestForStomach(piece.Position, ev.Direction)
+                : CalcFarthestOnBoard(piece.Position, ev.Direction);
             if (to == piece.Position)
             {
                 ev.Skipped = true;
@@ -332,6 +341,7 @@ public class SmackResolver : MonoBehaviour
         ev.ToPos = to;
         if (_boardView != null)
             ev.ToWorldPos = _boardView.HexToWorld(to);
+        ConsumeStomachPath(piece, ev.FromPos, to, ev.Direction, ev);
         _board.MovePiece(piece, to);
 
         // ── 爆炸推动得分 ──────────────────────────────────────────
@@ -357,6 +367,9 @@ public class SmackResolver : MonoBehaviour
         }
 
         // 检查正前方是否有棋子
+        if (piece.Type == PieceType.Stomach)
+            return;
+
         var frontCell = to.Neighbor(ev.Direction);
         var frontPiece = _board.GetPiece(frontCell);
         if (frontPiece != null)
@@ -464,7 +477,6 @@ public class SmackResolver : MonoBehaviour
 
             case PieceType.Stomach:
                 // 胃袋沿撞击方向移动吞噬
-                _priorityQueue.Enqueue(new GameEvent { Type = GameEventType.StomachMove, TargetPieceId = target.ID, Direction = ev.Direction });
                 break;
 
             case PieceType.Devour:
@@ -569,14 +581,18 @@ public class SmackResolver : MonoBehaviour
         ev.View = piece.View;
 
         var next = piece.Position.Neighbor(ev.Direction);
-        if (_board.GetContent(next) != CellContent.Empty)
+        if (!CanMoveInto(piece, _board.GetContent(next)))
         {
             ev.ToPos = piece.Position; // 推失败→震动
             return;
         }
         ev.ToPos = next;
+        ConsumeStomachPath(piece, ev.FromPos, next, ev.Direction, ev);
         _board.MovePiece(piece, next);
         // 碰撞检查
+        if (piece.Type == PieceType.Stomach)
+            return;
+
         var front1 = next.Neighbor(ev.Direction);
         var fp1 = _board.GetPiece(front1);
         if (fp1 != null)
@@ -592,14 +608,18 @@ public class SmackResolver : MonoBehaviour
         ev.View = piece.View;
 
         var next = piece.Position.Neighbor(ev.Direction);
-        if (_board.GetContent(next) != CellContent.Empty)
+        if (!CanMoveInto(piece, _board.GetContent(next)))
         {
             ev.ToPos = piece.Position;
             return;
         }
         ev.ToPos = next;
+        ConsumeStomachPath(piece, ev.FromPos, next, ev.Direction, ev);
         _board.MovePiece(piece, next);
         // 碰撞检查（沿转向后方向）
+        if (piece.Type == PieceType.Stomach)
+            return;
+
         var front2 = next.Neighbor(ev.Direction);
         var fp2 = _board.GetPiece(front2);
         if (fp2 != null)
@@ -643,11 +663,17 @@ public class SmackResolver : MonoBehaviour
         ev.FromPos = piece.Position;
         ev.View = piece.View;
 
-        var to = CalcFarthestOnBoard(piece.Position, ev.Direction);
+        var to = piece.Type == PieceType.Stomach
+            ? CalcFarthestForStomach(piece.Position, ev.Direction)
+            : CalcFarthestOnBoard(piece.Position, ev.Direction);
         if (to == piece.Position) { ev.Skipped = true; return; }
 
         ev.ToPos = to;
+        ConsumeStomachPath(piece, ev.FromPos, to, ev.Direction, ev);
         _board.MovePiece(piece, to);
+        if (piece.Type == PieceType.Stomach)
+            return;
+
         var front3 = to.Neighbor(ev.Direction);
         var fp3 = _board.GetPiece(front3);
         if (fp3 != null)
@@ -1159,6 +1185,60 @@ public class SmackResolver : MonoBehaviour
 
     private Piece FindPieceById(int id) => _board.GetPieceById(id);
 
+    private static bool CanMoveInto(Piece piece, CellContent content)
+    {
+        if (content == CellContent.Empty) return true;
+        return piece != null && piece.Type == PieceType.Stomach && content == CellContent.Piece;
+    }
+
+    private Hex CalcFarthestForStomach(Hex from, int dir)
+    {
+        var cur = from;
+        while (true)
+        {
+            var next = cur.Neighbor(dir);
+            var c = _board.GetContent(next);
+            if (c == CellContent.OutOfBoard || c == CellContent.Wall)
+                break;
+            cur = next;
+        }
+        return cur;
+    }
+
+    private void ConsumeStomachPath(Piece mover, Hex from, Hex to, int dir, GameEvent moveEvent)
+    {
+        if (mover == null || mover.Type != PieceType.Stomach || from == to)
+            return;
+
+        int eaten = 0;
+        var cur = from;
+        while (cur != to)
+        {
+            cur = cur.Neighbor(dir);
+            var target = _board.GetPiece(cur);
+            if (target == null || target.ID == mover.ID)
+                continue;
+
+            var eatenView = target.View;
+            var eatenPos = target.Position;
+            _board.RemovePiece(target);
+            _pendingAnimLog.Add(new GameEvent
+            {
+                Type = GameEventType.Consume,
+                RemovedView = eatenView,
+                FromPos = eatenPos,
+                ToPos = eatenPos,
+                Executed = true,
+            });
+
+            eaten++;
+            int eatNum = moveEvent.ConsumeCount + eaten;
+            RecordScore(Fib(eatNum), eatenPos);
+        }
+
+        moveEvent.ConsumeCount += eaten;
+    }
+
     /// <summary>计算沿 dir 方向在棋盘内可达的最远格（不含推出棋盘）。</summary>
     private Hex CalcFarthestOnBoard(Hex from, int dir)
     {
@@ -1197,7 +1277,7 @@ public class SmackResolver : MonoBehaviour
     }
 
     /// <summary>用于 SimulateSmack 的克隆棋盘最远格计算。</summary>
-    private static Hex CalcFarthest(Hex from, int dir, Dictionary<Hex, int> grid, int selfId, Board board)
+    private static Hex CalcFarthest(Hex from, int dir, Dictionary<Hex, int> grid, int selfId, Board board, bool canPassPieces = false)
     {
         var cur = from;
         while (true)
@@ -1208,9 +1288,30 @@ public class SmackResolver : MonoBehaviour
                 break;
             if (!grid.ContainsKey(next)) { cur = next; continue; }
             if (grid[next] == selfId) { cur = next; continue; } // 自身
+            if (canPassPieces) { cur = next; continue; }
             break;
         }
         return cur;
+    }
+
+    private static void RemoveSimulatedStomachPath(
+        Hex from,
+        Hex to,
+        int dir,
+        Dictionary<Hex, int> grid,
+        Dictionary<int, Hex> positions,
+        int stomachId)
+    {
+        var cur = from;
+        while (cur != to)
+        {
+            cur = cur.Neighbor(dir);
+            if (!grid.TryGetValue(cur, out var id) || id == stomachId)
+                continue;
+
+            grid.Remove(cur);
+            positions.Remove(id);
+        }
     }
 
     // ── A9 播放器（逐事件串行播动画）────────────────────────────
