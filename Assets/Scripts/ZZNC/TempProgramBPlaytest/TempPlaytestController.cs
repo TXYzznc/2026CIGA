@@ -1700,8 +1700,12 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
 
     private void EnsureHoverTooltip()
     {
+        var overlayCanvas = EnsureRuntimeOverlayCanvas();
+        var overlayRoot = overlayCanvas != null ? overlayCanvas.transform : null;
+
         if (pieceTooltip != null && IsSceneInstance(pieceTooltip))
         {
+            MoveViewToCanvas(pieceTooltip, overlayRoot);
             pieceTooltip.transform.SetAsLastSibling();
             pieceTooltip.Hide();
             return;
@@ -1714,13 +1718,14 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
             if (candidate != null && IsSceneInstance(candidate))
             {
                 pieceTooltip = candidate;
+                MoveViewToCanvas(pieceTooltip, overlayRoot);
                 pieceTooltip.transform.SetAsLastSibling();
                 pieceTooltip.Hide();
                 return;
             }
         }
 
-        var canvas = FindFirstObjectByType<Canvas>();
+        var canvas = overlayCanvas != null ? overlayCanvas : FindFirstObjectByType<Canvas>();
         if (canvas == null)
         {
             Debug.LogWarning("[ZZNC.TempProgramB] No Canvas found, hover tooltip disabled.");

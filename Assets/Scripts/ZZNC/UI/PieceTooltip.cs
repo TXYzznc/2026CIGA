@@ -15,6 +15,12 @@ public class PieceTooltip : MonoBehaviour
 
     private Canvas _canvas;
 
+    private void OnTransformParentChanged()
+    {
+        _canvas = null;
+        EnsureReferences();
+    }
+
     public static PieceTooltip CreateRuntime(Canvas canvas)
     {
         if (canvas == null) return null;
@@ -112,8 +118,9 @@ public class PieceTooltip : MonoBehaviour
 
     private void EnsureReferences()
     {
-        if (_canvas == null)
-            _canvas = GetComponentInParent<Canvas>();
+        var currentCanvas = GetComponentInParent<Canvas>();
+        if (_canvas != currentCanvas)
+            _canvas = currentCanvas;
     }
 
     private static TextMeshProUGUI CreateText(string name, Transform parent, float fontSize, FontStyles fontStyle)
