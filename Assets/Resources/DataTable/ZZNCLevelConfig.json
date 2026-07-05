@@ -1,21 +1,16 @@
 {
   "rounds": [
-    { "id": 1, "levelId": 1, "roundIndex": 1, "maxRowLength": 6, "smackCount": 5, "targetScore": 20, "addWallCountOnPass": 2, "initialPieceCount": 5 },
-    { "id": 2, "levelId": 1, "roundIndex": 2, "maxRowLength": 6, "smackCount": 5, "targetScore": 40, "addWallCountOnPass": 2, "initialPieceCount": 0 },
-    { "id": 3, "levelId": 1, "roundIndex": 3, "maxRowLength": 6, "smackCount": 5, "targetScore": 80, "addWallCountOnPass": 2, "initialPieceCount": 0 },
-    { "id": 4, "levelId": 1, "roundIndex": 4, "maxRowLength": 6, "smackCount": 5, "targetScore": 100, "addWallCountOnPass": 2, "initialPieceCount": 0 },
-    { "id": 5, "levelId": 2, "roundIndex": 1, "maxRowLength": 8, "smackCount": 5, "targetScore": 40, "addWallCountOnPass": 4, "initialPieceCount": 10 },
-    { "id": 6, "levelId": 2, "roundIndex": 2, "maxRowLength": 8, "smackCount": 5, "targetScore": 80, "addWallCountOnPass": 4, "initialPieceCount": 0 },
-    { "id": 7, "levelId": 2, "roundIndex": 3, "maxRowLength": 8, "smackCount": 5, "targetScore": 120, "addWallCountOnPass": 4, "initialPieceCount": 0 },
-    { "id": 8, "levelId": 2, "roundIndex": 4, "maxRowLength": 8, "smackCount": 5, "targetScore": 160, "addWallCountOnPass": 4, "initialPieceCount": 0 },
-    { "id": 9, "levelId": 2, "roundIndex": 5, "maxRowLength": 8, "smackCount": 5, "targetScore": 320, "addWallCountOnPass": 4, "initialPieceCount": 0 },
-    { "id": 10, "levelId": 3, "roundIndex": 1, "maxRowLength": 10, "smackCount": 5, "targetScore": 40, "addWallCountOnPass": 6, "initialPieceCount": 15 },
-    { "id": 11, "levelId": 3, "roundIndex": 2, "maxRowLength": 10, "smackCount": 5, "targetScore": 80, "addWallCountOnPass": 6, "initialPieceCount": 0 },
-    { "id": 12, "levelId": 3, "roundIndex": 3, "maxRowLength": 10, "smackCount": 5, "targetScore": 160, "addWallCountOnPass": 6, "initialPieceCount": 0 },
-    { "id": 13, "levelId": 3, "roundIndex": 4, "maxRowLength": 10, "smackCount": 5, "targetScore": 320, "addWallCountOnPass": 6, "initialPieceCount": 0 },
-    { "id": 14, "levelId": 3, "roundIndex": 5, "maxRowLength": 10, "smackCount": 5, "targetScore": 640, "addWallCountOnPass": 6, "initialPieceCount": 0 },
-    { "id": 15, "levelId": 3, "roundIndex": 6, "maxRowLength": 10, "smackCount": 5, "targetScore": 1280, "addWallCountOnPass": 6, "initialPieceCount": 0 },
-    { "id": 16, "levelId": 3, "roundIndex": 7, "maxRowLength": 10, "smackCount": 5, "targetScore": 2560, "addWallCountOnPass": 6, "initialPieceCount": 0 }
+    { "id": 1, "levelId": 1, "roundIndex": 1, "maxRowLength": 6, "smackCount": 5, "targetScore": 20, "addWallCountOnPass": 1, "initialPieceCount": 6 },
+    { "id": 2, "levelId": 1, "roundIndex": 2, "maxRowLength": 6, "smackCount": 5, "targetScore": 40, "addWallCountOnPass": 1, "initialPieceCount": 0 },
+    { "id": 3, "levelId": 1, "roundIndex": 3, "maxRowLength": 6, "smackCount": 5, "targetScore": 60, "addWallCountOnPass": 1, "initialPieceCount": 0 },
+    { "id": 4, "levelId": 2, "roundIndex": 1, "maxRowLength": 8, "smackCount": 6, "targetScore": 30, "addWallCountOnPass": 2, "initialPieceCount": 8 },
+    { "id": 5, "levelId": 2, "roundIndex": 2, "maxRowLength": 8, "smackCount": 6, "targetScore": 60, "addWallCountOnPass": 2, "initialPieceCount": 0 },
+    { "id": 6, "levelId": 2, "roundIndex": 3, "maxRowLength": 8, "smackCount": 6, "targetScore": 100, "addWallCountOnPass": 2, "initialPieceCount": 0 },
+    { "id": 7, "levelId": 2, "roundIndex": 4, "maxRowLength": 8, "smackCount": 6, "targetScore": 150, "addWallCountOnPass": 2, "initialPieceCount": 0 },
+    { "id": 8, "levelId": 3, "roundIndex": 1, "maxRowLength": 10, "smackCount": 7, "targetScore": 40, "addWallCountOnPass": 3, "initialPieceCount": 10 },
+    { "id": 9, "levelId": 3, "roundIndex": 2, "maxRowLength": 10, "smackCount": 7, "targetScore": 80, "addWallCountOnPass": 3, "initialPieceCount": 0 },
+    { "id": 10, "levelId": 3, "roundIndex": 3, "maxRowLength": 10, "smackCount": 7, "targetScore": 150, "addWallCountOnPass": 3, "initialPieceCount": 0 },
+    { "id": 11, "levelId": 3, "roundIndex": 4, "maxRowLength": 10, "smackCount": 7, "targetScore": 300, "addWallCountOnPass": 3, "initialPieceCount": 0 }
   ],
   "choicePool": [
     { "pieceType": "Normal", "weight": 10 },

@@ -100,6 +100,21 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     [SerializeField, Range(0f, 2f)] private float tooltipHoverDelay = 0.5f;
     [SerializeField] private BoardHexPulseEffect comboPulse;
 
+    [Header("=== 拍击动画 ===")]
+    [SerializeField] private GameObject smackAnimObj1;
+    [SerializeField] private GameObject smackAnimObj2;
+
+    [Header("=== 三选一 ===")]
+    [SerializeField, Range(0.05f, 0.5f)] private float choiceFadeDuration = 0.15f;
+
+    [Header("=== 音效 ===")]
+    [SerializeField] private AudioClip bgmClip;
+    [SerializeField] private AudioClip scorePopClip;
+    [SerializeField] private AudioClip scoreAddClip;
+    [SerializeField] private AudioClip smackClip;
+    private AudioSource _bgmSource;
+    private AudioSource _sfxSource;
+
     [Header("=== UI 渲染层级 ===")]
     [SerializeField] private bool placeGameplayCanvasBehindBoard = true;
     [SerializeField, Min(0.01f)] private float gameplayCanvasBehindBoardOffset = 5f;
@@ -141,6 +156,9 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     private bool _gameActive;
     private bool _waitingForChoice;
     private bool _isChoicePanelOpen;
+    private Transform _turntable;
+    private float _turntableAngleOffset;
+    private Coroutine _choiceFadeCoroutine;
     private Transform _choiceRoot;
     private GameObject _choiceMask;
     private int _choicePoolTotalWeight;
@@ -172,7 +190,21 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
             hudView.OnAnticlockWiseClicked += OnAnticlockWiseRequest;
             hudView.OnClockWiseClicked += OnClockWiseRequest;
             hudView.OnRetryClicked += RestartCurrentLevel;
+            _turntable = hudView.transform.Find("Turntable");
         }
+
+        // 音效
+        _sfxSource = gameObject.AddComponent<AudioSource>();
+        _sfxSource.playOnAwake = false;
+        if (bgmClip != null)
+        {
+            _bgmSource = gameObject.AddComponent<AudioSource>();
+            _bgmSource.clip = bgmClip;
+            _bgmSource.loop = true;
+            _bgmSource.playOnAwake = false;
+            _bgmSource.Play();
+        }
+
         if (mainMenuView != null)
             mainMenuView.OnStartClicked += StartNewGame;
         if (settlementView != null)
@@ -199,6 +231,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         var initGravDir = Hex.OrientationToGravityDir(_targetOrientation);
         var initLocalGrav = HexToLocal(new Hex(0, 0).Neighbor(initGravDir));
         _visualAngle = GetVisualBoardAngle(initLocalGrav);
+        _turntableAngleOffset = _visualAngle;
 
         _levelConfig = ZZNCLevelConfigLoader.Load();
         if (autoStartGame)
@@ -275,6 +308,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         _visualAngle += _springVelocity * dt;
 
         transform.rotation = Quaternion.Euler(0f, 0f, _visualAngle);
+        SyncTurntableRotation();
 
         // 用弹簧速度驱动边缘流光亮度
         boardEdgeGlow?.SetSpeed(Mathf.Abs(_springVelocity));
@@ -302,8 +336,10 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     {
         _targetOrientation = Hex.RotateDir(_targetOrientation, direction);
         boardOrientation = _targetOrientation; // 立即更新重力方向，不等动画结束
-        // 反方向蓄力一脚，产生"先回拉再弹出"的物理感
-        _springVelocity -= direction * 10f;
+        SyncTurntableRotation();
+        // 先往回拉蓄力，再弹向目标方向
+        _visualAngle -= direction * 18f;
+        _springVelocity -= direction * 30f;
     }
 
     private void OnAnticlockWiseRequest()
@@ -346,10 +382,21 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
 
     public void ShowScorePop(int scoreDelta, int combo, Vector3 worldPos)
     {
+        // 得分弹出音效（重叠播放）
+        if (scorePopClip != null && _sfxSource != null)
+            _sfxSource.PlayOneShot(scorePopClip);
+
+        // 总分每加 1 播放一次加分音效（重叠播放）
+        if (scoreAddClip != null && _sfxSource != null && scoreDelta > 0)
+        {
+            for (int i = 0; i < scoreDelta; i++)
+                _sfxSource.PlayOneShot(scoreAddClip);
+        }
+
         // 每次弹出都实时累加到总分
         currentScore += scoreDelta;
         hudView?.SetScore(currentScore);
-        float shake = 0.1f + combo * 0.015f;
+        float shake = 0.1f + combo * 0.03f;
         hudView?.ShakeScore(shake);
         _comboCount++;
         comboPulse?.Pulse(_comboCount);
@@ -369,8 +416,8 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         var mr = go.GetComponent<MeshRenderer>();
         if (mr != null) mr.sortingOrder = 100;
 
-        float baseScale = 0.6f + combo * 0.15f;
-        float springKick = 5f + combo * combo * 0.05f;
+        float baseScale = 0.6f + combo * 0.25f;
+        float springKick = 5f + combo * combo * 0.12f;
 
         StartCoroutine(AnimateScorePopup(go, tmp, baseScale, springKick, combo));
     }
@@ -378,22 +425,22 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     private IEnumerator AnimateScorePopup(GameObject go, TMP_Text tmp, float baseScale, float springKick, int combo)
     {
         var startPos = go.transform.position;
-        float scale = 0.02f;
-        float velocity = -springKick * 0.3f; // 先往小缩再爆开
+        float scale = 0.01f;
+        float velocity = -springKick * 0.4f; // 先往小缩再爆开
         float angle = 0f;
-        float duration = Mathf.Min(0.5f, 0.2f + combo * 0.003f);
+        float duration = Mathf.Min(0.8f, 0.2f + combo * 0.008f);
 
         for (var t = 0f; t < duration; t += Time.deltaTime)
         {
             float dt = Time.deltaTime;
             float displacement = baseScale - scale;
-            velocity += displacement * 200f * dt;
-            velocity *= Mathf.Exp(-5f * dt);
+            velocity += displacement * 300f * dt;
+            velocity *= Mathf.Exp(-4f * dt);
             scale += velocity * dt;
 
-            // 弹簧振荡时轻微左右旋转
-            float rot = (scale - baseScale) * 15f;
-            angle = Mathf.Lerp(angle, rot, dt * 12f);
+            // 弹簧振荡时左右旋转（随 combo 加剧）
+            float rot = (scale - baseScale) * (15f + combo * 3f);
+            angle = Mathf.Lerp(angle, rot, dt * 20f);
 
             go.transform.localScale = Vector3.one * Mathf.Max(0.01f, scale);
             go.transform.localRotation = Quaternion.Euler(0f, 0f, angle);
@@ -542,7 +589,12 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
 
     private void ShowChoicePanel(int times, Action<PieceType> onChosen = null, Action onFinished = null)
     {
-        HideChoicePanel();
+        // 立即清理残余旧面板（避免与渐出协程冲突）
+        if (_choiceFadeCoroutine != null) { StopCoroutine(_choiceFadeCoroutine); _choiceFadeCoroutine = null; }
+        if (_choiceRoot != null) DestroyImmediate(_choiceRoot.gameObject);
+        _choiceRoot = null;
+        if (_choiceMask != null) DestroyImmediate(_choiceMask);
+        _choiceMask = null;
         _isChoicePanelOpen = true;
 
         if (_board.EmptyCells().Count == 0)
@@ -568,7 +620,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         maskTransform.offsetMin = Vector2.zero;
         maskTransform.offsetMax = Vector2.zero;
         var maskImg = mask.GetComponent<Image>();
-        maskImg.color = new Color(0f, 0f, 0f, 0.4f);
+        maskImg.color = new Color(0f, 0f, 0f, 0f);
         maskImg.raycastTarget = true;
         _choiceMask = mask;
 
@@ -676,15 +728,61 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
             HideChoicePanel();
             onFinished?.Invoke();
         });
+
+        // 渐入
+        StartCoroutine(FadeChoicePanel(0f, 1f));
     }
 
     private void HideChoicePanel()
     {
         _isChoicePanelOpen = false;
-        if (_choiceRoot != null) DestroyImmediate(_choiceRoot.gameObject);
-        _choiceRoot = null;
-        if (_choiceMask != null) DestroyImmediate(_choiceMask);
-        _choiceMask = null;
+        StartCoroutine(FadeChoicePanel(1f, 0f));
+    }
+
+    private System.Collections.IEnumerator FadeChoicePanel(float from, float to)
+    {
+        float elapsed = 0f;
+        var maskImg = _choiceMask?.GetComponent<Image>();
+        var rootImgs = _choiceRoot?.GetComponentsInChildren<Image>(true) ?? new Image[0];
+        var rootTmp = _choiceRoot?.GetComponentsInChildren<TextMeshProUGUI>(true) ?? new TextMeshProUGUI[0];
+
+        if (from > to && maskImg != null) maskImg.raycastTarget = false;
+
+        while (elapsed < choiceFadeDuration)
+        {
+            float t = Mathf.Clamp01(elapsed / choiceFadeDuration);
+            float a = Mathf.Lerp(from, to, t);
+
+            if (maskImg != null)
+                maskImg.color = new Color(0f, 0f, 0f, a * 0.4f);
+
+            foreach (var img in rootImgs)
+            {
+                if (img == null || img == maskImg) continue;
+                var c = img.color;
+                img.color = new Color(c.r, c.g, c.b, Mathf.Lerp(0f, 1f, a));
+            }
+            foreach (var tmp in rootTmp)
+            {
+                if (tmp == null) continue;
+                tmp.color = new Color(tmp.color.r, tmp.color.g, tmp.color.b, Mathf.Lerp(0f, 1f, a));
+            }
+
+            elapsed += Time.deltaTime;
+            yield return null;
+        }
+
+        if (to == 0f)
+        {
+            if (_choiceRoot != null) DestroyImmediate(_choiceRoot.gameObject);
+            _choiceRoot = null;
+            if (_choiceMask != null) DestroyImmediate(_choiceMask);
+            _choiceMask = null;
+        }
+        else
+        {
+            if (maskImg != null) maskImg.raycastTarget = true;
+        }
     }
 
     private void PlaceChosenPiece(PieceType type)
@@ -973,6 +1071,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
 
         var piece = new Piece { Type = type };
         var view = CreatePieceView(type, pos);
+        view.PlaySpawn();
         piece.View = view;
         _board.PlacePiece(piece, pos);
         _pieceViews[piece] = view;
@@ -1192,6 +1291,10 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
     private void OnSmackRequest()
     {
         if (!_gameActive || _isResolving || _waitingForChoice || remainingSmacks <= 0) return;
+        if (smackClip != null && _sfxSource != null)
+            _sfxSource.PlayOneShot(smackClip);
+        PlayUIAnim(smackAnimObj1);
+        PlayUIAnim(smackAnimObj2);
         impactVFX?.PlaySmackImpact(HexToWorld(new Hex(0, 0)));
         ExecuteCurrentSmack();
     }
@@ -1207,6 +1310,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         _visualAngle = GetVisualBoardAngle(snapLocalGrav);
         _springVelocity = 0f;
         transform.rotation = Quaternion.Euler(0f, 0f, _visualAngle);
+        SyncTurntableRotation();
         boardOrientation = _targetOrientation;
 
         _isResolving = true;
@@ -1289,6 +1393,7 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         foreach (var p in _board.AllPieces())
         {
             var view = CreatePieceView(p.Type, p.Position);
+            view.PlaySpawn();
             p.View = view;
             _pieceViews[p] = view;
         }
@@ -1306,8 +1411,38 @@ public class TempPlaytestController : MonoBehaviour, IBoardView, IPieceViewFacto
         var localGravity = HexToLocal(new Hex(0, 0).Neighbor(gravityDir));
         var z = GetVisualBoardAngle(localGravity);
         transform.rotation = Quaternion.Euler(0f, 0f, z);
+        SyncTurntableRotation();
         RefreshPreview();
         Debug.Log($"[ZZNC.TempProgramB] Board rotated. Orientation={boardOrientation}, rule gravity=D{gravityDir}, visual gravity=screen down.");
+    }
+
+    private void SyncTurntableRotation()
+    {
+        if (_turntable != null)
+            _turntable.localRotation = Quaternion.Euler(0f, 0f, _visualAngle - _turntableAngleOffset);
+    }
+
+    private void PlayUIAnim(GameObject target)
+    {
+        if (target == null) return;
+        target.SetActive(true);
+        var anim = target.GetComponent<Animation>();
+        if (anim != null)
+        {
+            anim.Stop();
+            anim.Play();
+            StartCoroutine(DisableAfterAnim(target, anim.clip ? anim.clip.length : 0.5f));
+        }
+        else
+        {
+            StartCoroutine(DisableAfterAnim(target, 0.5f));
+        }
+    }
+
+    private System.Collections.IEnumerator DisableAfterAnim(GameObject target, float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        if (target != null) target.SetActive(false);
     }
 
     private static float GetVisualBoardAngle(Vector2 localGravity)

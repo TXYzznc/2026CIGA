@@ -1222,7 +1222,7 @@ public class SmackResolver : MonoBehaviour
             if (ev.Skipped || !ev.Executed)
             {
                 // 跳过的事件如果有残留 View 仍需销毁（如 Consume 被抢先但提前保存了 View）
-                if (ev.RemovedView != null)
+                if (ev.RemovedView is UnityEngine.Object viewObj && viewObj != null)
                 {
                     _factory?.DestroyView(ev.RemovedView);
                 }
@@ -1245,7 +1245,7 @@ public class SmackResolver : MonoBehaviour
             case GameEventType.ContinueMove:
             case GameEventType.StomachMove:
             {
-                if (ev.RemovedView != null)
+                if (ev.RemovedView is UnityEngine.Object viewObj1 && viewObj1 != null)
                 {
                     duration = ev.RemovedView.PlayRemove() / _animSpeedScale;
                     if (duration > 0f) yield return new WaitForSeconds(duration);
@@ -1307,7 +1307,7 @@ public class SmackResolver : MonoBehaviour
             case GameEventType.Remove:
             case GameEventType.Consume:
             {
-                if (ev.RemovedView != null)
+                if (ev.RemovedView is UnityEngine.Object viewObj2 && viewObj2 != null)
                 {
                     duration = ev.RemovedView.PlayRemove() / _animSpeedScale;
                     if (duration > 0f) yield return new WaitForSeconds(duration);
